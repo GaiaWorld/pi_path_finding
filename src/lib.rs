@@ -19,21 +19,3 @@ pub use finder::*;
 pub use normal::*;
 pub use jump_point::*;
 pub use tile_map::*;
-
-// mod fast_astar;
-// // mod astar;
-// mod jps;
-// mod nav_mesh;
-// mod tile;
-// mod test_jps;
-// mod test_jps_astar;
-// mod jps_plus;
-
-// // pub use astar::*;
-// pub use jps::*;
-// pub use nav_mesh::*;
-// pub use fast_astar::*;
-// pub use tile::*;
-// pub use test_jps::*;
-// pub use test_jps_astar::*;
-// pub use jps_plus::*;
