@@ -6,7 +6,7 @@ edition = "2021"
 description = "Path Finding Algorithm, such as A*, JPS"
 repository = "https://github.com/GaiaWorld/pi_path_finding"
 license = "MIT OR Apache-2.0"
-keywords = ["pi", "path_finding", "A*", "JPS"]
+keywords = ["pi", "path_finding", "A Star", "JPS"]
 
 [dependencies]
 nalgebra = "0.30"
