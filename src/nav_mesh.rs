@@ -1,283 +1,79 @@
-// //!
-// //! 基于NavMesh图的A*寻路
-// //!
+//!
+//! 导航网格 的 A* 寻路
+//!
 
-use crate::{AFilter, AStar, AStarMap};
+use crate::{make_neighbors, AStar, Entry, Map, NodeIndex};
+use nalgebra::Scalar;
 use nalgebra::{Matrix3x1, Point3, RealField};
-use num_traits::FromPrimitive;
-use std::{collections::HashMap, marker::PhantomData};
+use num_traits::{cast::AsPrimitive, FromPrimitive, Num};
+use std::collections::HashMap;
 
-type SegmentIndex = usize;
+// 在 某个 多边形 点列表 的 索引
+#[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PointIndex(usize);
 
-/// ## Nav-Mesh*寻路的寻路主体代理约束
-///
-/// + 通过代理将不同寻路能力主体的寻路情况交由上层逻辑决定，增加导航图的通用性增加导航图的通用性及寻路能力的动态性
-///
-/// 需要实现指定两点主体是否能通过，以及通过的代价
-///
-/// ### 对`N`的约束
-///
-/// + 算术运算，可拷贝，可偏序比较， 可与整数相互转换；
-/// + 实际使用的时候就是数字类型，比如：i8/i16/i32/f32/f64；
-/// 示例：
-/// # Examples
-/// ```
-/// struct TestFilter {}
-/// impl ANavMeshFilter<f64> for TestFilter {
-///     fn is_pass(&self, _: Point3<f64>, _: Point3<f64>) -> bool {
-///         true
-///     }
-///     fn get_cost(&self, from: Point3<f64>, to: Point3<f64>) -> f64 {
-///         nalgebra::distance(&from, &to)
-///     }
-/// }
-/// ```
-pub trait ANavMeshFilter<N>
-where
-    N: RealField,
-{
-    /// 主体于两点间是否可通过
-    fn is_pass(&self, from: Point3<N>, to: Point3<N>) -> bool;
-
-    /// 主体于两点间通过代价
-    fn get_cost(&self, from: Point3<N>, to: Point3<N>) -> N;
+impl From<usize> for PointIndex {
+    fn from(v: usize) -> Self {
+        Self(v)
+    }
 }
 
-/// ## Nav-Mesh A* 寻路的Nav-Mesh图
+impl From<PointIndex> for usize {
+    fn from(v: PointIndex) -> Self {
+        v.0
+    }
+}
+
+/// ## 导航网格 的 A* 寻路
 ///
 /// ### 对`N`的约束
 ///
 /// + 算术运算，可拷贝，可偏序比较， 可与整数相互转换；
 /// + 实际使用的时候就是数字类型，比如：i8/i16/i32/f32/f64；
 ///
-pub struct NavMeshMap<'a, N>
+#[derive(Debug)]
+pub struct NavMeshMap<N>
 where
-    N: RealField,
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
 {
-    // 该图 所有 线段
-    segments: Vec<Segment<'a, N>>,
+    // 该导航网格 所有的 顶点
+    points: Vec<Point3<N>>,
 
-    // 该图 所有 凸多边形
-    polygon: Vec<Polygon<N>>,
+    // 该导航网格 所有的边
+    segments: Vec<Segment<N>>,
 
-    // 调用A*的内部存储结构,支持多线程（一张图同时多个寻路请求）
-    astar: Vec<AStar<N>>,
+    // 凸多边形，其中的点，边 都是 索引
+    polygons: Vec<Polygon<N>>,
 }
 
-impl<'a, N> NavMeshMap<'a, N>
+impl<N> NavMeshMap<N>
 where
-    N: RealField,
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
 {
     ///
-    ///新建一个NavMesh图
+    /// 新建 导航网格
     ///
-    /// `vertexs`传入构成Nav-Mesh图的所有顶点坐标的序列
+    /// `vertexs`传入构成 Nav-Mesh 所有顶点坐标 (x, y, z)
     ///
-    /// `indexs`传入指定顶点构成三角形网格，指定方式为`vertexs`中的序列
+    /// `indexs` 每个元素 都是 一个凸多边形网格 的 顶点索引数组
     ///
-    /// 附：Unity中数据导出示例C#代码：
-    ///
-    /// # Examples
-    /// ```
-    /// StreamWriter streamWriter = new StreamWriter(path);
-    /// streamWriter.WriteLine("v");
-    /// List<Vector3> vertexs = new List<Vector3>();
-    /// Dictionary<int, int> vertexIndex = new Dictionary<int, int>();
-    /// for (int i = 0; i < navMeshTriangulation.vertices.Length; i++)
-    /// {
-    ///     bool newVert = true;
-    ///     for (int ii = 0; ii < vertexs.Count; ii++)
-    ///     {
-    ///         if ((vertexs[ii] - navMeshTriangulation.vertices[i]).magnitude < 0.0001)
-    ///         {
-    ///             newVert = false;
-    ///             vertexIndex.Add(i, ii);
-    ///             break;
-    ///         }
-    ///     }
-    ///     if (newVert)
-    ///     {
-    ///         vertexIndex.Add(i, vertexs.Count);
-    ///         vertexs.Add(navMeshTriangulation.vertices[i]);
-    ///         streamWriter.WriteLine(navMeshTriangulation.vertices[i].x + " " + navMeshTriangulation.vertices[i].y + " " + navMeshTriangulation.vertices[i].z);
-    ///     }
-    /// }
-    /// List<List<int>> polygons = new List<List<int>>();
-    /// List<int> polygon_types = new List<int>();
-    /// for (int i = 0; i < navMeshTriangulation.indices.Length;)
-    /// {
-    ///     bool merge = false;
-    ///     foreach (var polygon in polygons)
-    ///     {
-    ///         if (polygon.Contains(navMeshTriangulation.indices[i]) && polygon.Contains(navMeshTriangulation.indices[i + 1]))
-    ///         {
-    ///             polygon.Add(navMeshTriangulation.indices[i + 2]);
-    ///             merge = true;
-    ///             break;
-    ///         }
-    ///         if (polygon.Contains(navMeshTriangulation.indices[i + 1]) && polygon.Contains(navMeshTriangulation.indices[i + 2]))
-    ///         {
-    ///             polygon.Add(navMeshTriangulation.indices[i]);
-    ///             merge = true;
-    ///             break;
-    ///         }
-    ///         if (polygon.Contains(navMeshTriangulation.indices[i]) && polygon.Contains(navMeshTriangulation.indices[i + 2]))
-    ///         {
-    ///             polygon.Add(navMeshTriangulation.indices[i + 1]);
-    ///             merge = true;
-    ///             break;
-    ///         }
-    ///     }
-    ///     if(!merge)
-    ///     {
-    ///         List<int> temp = new List<int>();
-    ///         temp.Add(navMeshTriangulation.indices[i]);
-    ///         temp.Add(navMeshTriangulation.indices[i + 1]);
-    ///         temp.Add(navMeshTriangulation.indices[i + 2]);
-    ///         polygons.Add(temp);
-    ///         polygon_types.Add(navMeshTriangulation.areas[i/3]);
-    ///     }
-    ///     i = i + 3;
-    /// }
-    /// streamWriter.WriteLine("f");
-    /// for (int i = 0; i < polygons.Count; i++)
-    /// {
-    ///     string line = "";
-    ///     for(int ii = 0; ii < polygons[i].Count; ii++)
-    ///     {
-    ///         int index = vertexIndex[polygons[i][ii]];
-    ///         if (ii != 0)
-    ///             line += " " + index.ToString();
-    ///         else
-    ///             line += index.ToString();
-    ///     }
-    ///     streamWriter.WriteLine(line);
-    /// }
-    /// streamWriter.WriteLine("a");
-    /// for (int i = 0; i < polygon_types.Count; i++)
-    /// {
-    ///     streamWriter.WriteLine(navMeshTriangulation.areas[i]);
-    /// }
-    /// streamWriter.Flush();
-    /// streamWriter.Close();
-    /// ```
-    pub fn new_map(
-        vertexs: &[Point3<N>],
-        indexs: &[Vec<usize>],
-        max_find_num_in_time: usize,
-    ) -> Self {
+    pub fn new(points: Vec<Point3<N>>, nav_indexs: &[Vec<usize>]) -> Self {
         let mut map = Self {
-            segments: Vec::with_capacity(indexs.len() * 2),
-            polygon: Vec::with_capacity(indexs.len()),
-            astar: Vec::with_capacity(max_find_num_in_time),
+            points,
+            segments: vec![],
+            polygons: Vec::with_capacity(nav_indexs.len()),
         };
-        for _ in 0..max_find_num_in_time {
-            map.astar.push(AStar::new(indexs.len() * 2));
+
+        // (索引小的顶点，索引大的顶点) -> SegmentIndex
+        let mut segment_map: HashMap<(PointIndex, PointIndex), SegmentIndex> = HashMap::new();
+
+        for indexs in nav_indexs.iter() {
+            // 多边形
+            let polygon_index = map.polygons.len().into();
+            let p = Polygon::new(&mut map, &mut segment_map, polygon_index, indexs);
+            map.polygons.push(p);
         }
 
-        //所有实例了的线段，(indexs index, indexs index) -> map index
-        let mut all_segments: HashMap<(usize, usize), SegmentIndex> = HashMap::new();
-        for (_, index) in indexs.iter().enumerate() {
-            //多边形的构建
-            let point_num: N = FromPrimitive::from_usize(index.len()).unwrap();
-            let mut polygon = Polygon {
-                points: Vec::with_capacity(index.len()),
-                center: Point3::new(N::zero(), N::zero(), N::zero()),
-                segments: Vec::with_capacity(index.len()),
-                index: map.polygon.len(),
-                min_point: None,
-                max_point: None,
-            };
-            let mut point_x_sum = N::zero();
-            let mut point_y_sum = N::zero();
-            let mut point_z_sum = N::zero();
-
-            for index_item in index.iter() {
-                polygon.points.push(vertexs[*index_item]);
-                point_x_sum += vertexs[*index_item].x;
-                point_y_sum += vertexs[*index_item].y;
-                point_z_sum += vertexs[*index_item].z;
-                match polygon.min_point {
-                    None => polygon.min_point = Some(vertexs[*index_item]),
-                    Some(mut point) => {
-                        point.x = point.x.min(vertexs[*index_item].x);
-                        point.y = point.y.min(vertexs[*index_item].y);
-                        point.z = point.z.min(vertexs[*index_item].z);
-                        polygon.min_point = Some(point);
-                    }
-                }
-                match polygon.max_point {
-                    None => polygon.max_point = Some(vertexs[*index_item]),
-                    Some(mut point) => {
-                        point.x = point.x.max(vertexs[*index_item].x);
-                        point.y = point.y.max(vertexs[*index_item].y);
-                        point.z = point.z.max(vertexs[*index_item].z);
-                        polygon.max_point = Some(point);
-                    }
-                }
-            }
-            polygon.center = Point3::new(
-                point_x_sum / point_num,
-                point_y_sum / point_num,
-                point_z_sum / point_num,
-            );
-
-            //边的构建
-            let mut segments_index = Vec::with_capacity(index.len());
-            for (i, _) in index.iter().enumerate() {
-                let i2 = (i + 1) % index.len();
-                match all_segments.get(&(index[i], index[i2])) {
-                    None => {
-                        match all_segments.get(&(index[i2], index[i])) {
-                            None => {
-                                //该边没有被实例过
-                                let segment = Segment {
-                                    center: nalgebra::center(
-                                        &vertexs[index[i]],
-                                        &vertexs[index[i2]],
-                                    ),
-                                    point1: vertexs[index[i]],
-                                    point2: vertexs[index[i2]],
-                                    neighbors: Vec::with_capacity(index.len() * 2),
-                                    phantom: PhantomData::default(),
-                                };
-                                all_segments.insert((index[i], index[i2]), map.segments.len());
-                                segments_index.push(map.segments.len());
-                                map.segments.push(segment);
-                            }
-                            Some(index) => {
-                                //该边以及实例过
-                                segments_index.push(*index);
-                            }
-                        }
-                    }
-                    Some(index) => {
-                        //该边以及实例过
-                        segments_index.push(*index);
-                    }
-                }
-            }
-
-            //该多边形的所有线段增加邻居线段
-            for segment_index in segments_index.iter() {
-                let segment_ref = map
-                    .segments
-                    .get_mut(*segment_index)
-                    .expect("Get Wrong Segment");
-                for segment_index2 in segments_index.iter() {
-                    if segment_index2 != segment_index {
-                        segment_ref.neighbors.push(*segment_index2);
-                    }
-                }
-            }
-
-            //多边形存储组成线段索引
-            for segment_index in segments_index.iter() {
-                polygon.segments.push(*segment_index);
-            }
-
-            map.polygon.push(polygon);
-        }
         map
     }
 
@@ -286,171 +82,218 @@ where
     ///
     /// 需要指定场景中的开始坐标及目标坐标，寻路主体代理实现，以及最多访问Nav-Mesh线段的数量,
     ///
-    /// 返回为有效路径坐标序列
+    /// is_simply_path 是否 简化路径（拉直）
+    ///
+    /// 返回 有效路径坐标序列
     ///
     /// + 超出Nav-Mesh图范围的开始点及目标点会被强行拉至Nav-Mesh图范围内
-    ///
-    pub fn find_path<Filter: ANavMeshFilter<N>>(
+    fn find_path(
         &mut self,
         start_pos: Point3<N>,
         end_pos: Point3<N>,
-        filter: &Filter,
+        is_simply_path: bool,
         max_nodes: usize,
-    ) -> Vec<Point3<N>> {
-        //起点多边形
+        max_numbers: usize,
+    ) -> Result<Vec<Point3<N>>, String> {
+        // 起点多边形
         let start_polygon = self.get_polygon_by_point(&start_pos);
-        //起点边
+        // 起点边
         let start_segment_index =
-            self.polygon[start_polygon].get_nearst_segment_index(&start_pos, self);
-        //终点多边形
+            self.polygons[start_polygon.0].get_nearst_segment_index(&start_pos, self);
+
+        // 终点多边形
         let end_polygon = self.get_polygon_by_point(&end_pos);
-        //终点边
-        let end_segment_index = self.polygon[end_polygon].get_nearst_segment_index(&end_pos, self);
+        // 终点边
+        let end_segment_index =
+            self.polygons[end_polygon.0].get_nearst_segment_index(&end_pos, self);
 
-        let nav_filter = NavMeshFilter {
-            filter: filter,
-            segments: &self.segments,
-        };
-        let mut astar = if self.astar.len() > 0 {
-            self.astar.pop().unwrap()
+        let mut astar: AStar<N, Entry<N>> = AStar::with_capacity(self.segments.len(), max_nodes);
+
+        let start = NodeIndex(start_segment_index.0);
+        let end = NodeIndex(end_segment_index.0);
+
+        let r = astar.find(start, end, max_numbers, &mut |cur, end, finder| {
+            make_neighbors(self, cur, end, finder)
+        });
+
+        let mut result_indies: Vec<usize> = astar.result_iter(end).map(|v| v.0).collect();
+        result_indies.reverse();
+
+        if self.polygons[start_polygon.0].is_contain_segment(SegmentIndex(result_indies[0])) {
+            // 由于找最近边为起点边，产生了折现（）路径第一个点和第二个点和起点在同一个多边形内）
+            result_indies.remove(0);
+        }
+
+        let end_segment_index = result_indies[result_indies.len() - 1];
+        if self.polygons[end_polygon.0].is_contain_segment(SegmentIndex(end_segment_index)) {
+            result_indies.pop();
+        }
+
+        let mut pts = if is_simply_path {
+            self.funnel(&mut result_indies, start_pos)
         } else {
-            AStar::new(self.segments.len())
+            self.get_path_points(&result_indies, start_pos)
         };
-        let path_to_end = astar.find_path(
-            self,
-            start_segment_index,
-            end_segment_index,
-            &nav_filter,
-            max_nodes,
-        );
+        pts.push(end_pos);
 
-        if astar.result_indies.len() > 1
-            && self.polygon[start_polygon]
-                .contain_point(self.segments[astar.result_indies[1]].center)
-        {
-            //由于找最近边为起点边，产生了折现（）路径第一个点和第二个点和起点在同一个多边形内）
-            astar.result_indies.remove(0);
+        Ok(pts)
+    }
+
+    fn get_path_points(&self, result_indies: &[usize], start: Point3<N>) -> Vec<Point3<N>> {
+        let mut r = vec![start];
+        for i in result_indies {
+            r.push(self.segments[*i].center);
         }
-
-        //路径转化为坐标
-        let mut path = self.funnel(&mut astar, start_pos);
-
-        if path_to_end {
-            path.push(end_pos)
-        }
-        self.astar.push(astar);
-        path
+        r
     }
 }
 
-// 遍历邻居的迭代器
-pub struct ASegmentIterator<'a> {
-    neighbors_ref: &'a Vec<usize>,
-    cur_index: usize,
+impl<N> Map<N> for NavMeshMap<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    type NodeIter = NavMeshNodeIterator;
+
+    // 注：这里的 NodeIndex 是 SegmentIndex
+    fn get_neighbors<'a>(&'a self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
+        let seg = &self.segments[cur.0];
+        NavMeshNodeIterator::new(seg.neighbors.clone(), parent.0.into())
+    }
+
+    // 注：这里的 NodeIndex 是 SegmentIndex
+    // 用 边的 中心 来计算 距离
+    fn get_g(&self, cur: NodeIndex, parent: NodeIndex) -> N {
+        let cur = &self.segments[cur.0].center;
+        let parent = &self.segments[parent.0].center;
+        nalgebra::distance(parent, cur)
+    }
+
+    // 注：这里的 NodeIndex 是 SegmentIndex
+    // 用 边的 中心 来计算 距离
+    fn get_h(&self, cur: NodeIndex, end: NodeIndex) -> N {
+        let cur = &self.segments[cur.0].center;
+        let parent = &self.segments[end.0].center;
+
+        nalgebra::distance(parent, cur)
+    }
 }
 
 //============================= 本地
-// 对astar的寻路主体代理的封装
-struct NavMeshFilter<'a, N, Filter>
-where
-    N: RealField,
-    Filter: ANavMeshFilter<N>,
-{
-    filter: &'a Filter,
-    segments: &'a [Segment<'a, N>],
+
+// 遍历邻居的迭代器
+pub struct NavMeshNodeIterator {
+    // 当前遍历的 迭代器索引
+    index: usize,
+
+    exclusive: SegmentIndex,
+
+    neighbors: Vec<SegmentIndex>,
 }
 
-impl<'a, N, Filter> AFilter<N> for NavMeshFilter<'a, N, Filter>
-where
-    N: RealField,
-    Filter: ANavMeshFilter<N>,
-{
-    // 从`from`节点到`to`节点是否可达
-    fn is_pass(&self, from: SegmentIndex, to: SegmentIndex) -> bool {
-        self.filter
-            .is_pass(self.segments[from].center, self.segments[to].center)
-    }
-
-    // 从`parent`节点到当前`cur`节点的`g`，即从父节点到当前节点的实际代价
-    fn get_g(&self, cur: usize, parent: usize) -> N {
-        self.filter
-            .get_cost(self.segments[parent].center, self.segments[cur].center)
-    }
-
-    // 从当前`cur`节点到`end`节点的`h`，即从当前节点到终点的预估代价
-    fn get_h(&self, cur: usize, end: usize) -> N {
-        self.filter
-            .get_cost(self.segments[cur].center, self.segments[end].center)
+impl NavMeshNodeIterator {
+    fn new(neighbors: Vec<SegmentIndex>, exclusive: SegmentIndex) -> Self {
+        let index = neighbors.len();
+        Self {
+            neighbors,
+            exclusive,
+            index,
+        }
     }
 }
 
-impl<'a, N> NavMeshMap<'a, N>
+impl Iterator for NavMeshNodeIterator {
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index == 0 {
+            return None;
+        }
+
+        self.index -= 1;
+
+        let seg = self.neighbors[self.index];
+        if self.exclusive != seg {
+            Some(NodeIndex(seg.0))
+        } else {
+            self.next()
+        }
+    }
+}
+
+impl<N> NavMeshMap<N>
 where
-    N: RealField,
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
 {
-    //获取给定点所在的多边形，若该点不处于任何多边形内，则查找最近多边形
-    fn get_polygon_by_point(&self, point: &Point3<N>) -> usize {
-        for polygon_ref in self.polygon.iter() {
-            if polygon_ref.contain_point(*point) {
+    // 获取给定点所在的多边形，若该点不处于任何多边形内，则查找最近多边形
+    fn get_polygon_by_point(&self, point: &Point3<N>) -> PolygonIndex {
+        for polygon_ref in self.polygons.iter() {
+            if polygon_ref.is_contain_point(&self.points, point) {
                 return polygon_ref.index;
             }
         }
 
-        //点不在任何多边形内
-        let mut nearst_index: usize = 0;
+        // 点不在任何多边形内
+        let mut nearst_index: PolygonIndex = Default::default();
         let mut nearst_distance_sqr =
-            nalgebra::distance_squared(&self.polygon[nearst_index].center, &point);
-        for (index, polygon) in self.polygon.iter().enumerate() {
-            let distance_sqr = nalgebra::distance_squared(&polygon.center, &point);
+            nalgebra::distance_squared(&self.polygons[nearst_index.0].center, point);
+
+        for polygon in &self.polygons {
+            let distance_sqr = nalgebra::distance_squared(&polygon.center, point);
             if distance_sqr < nearst_distance_sqr {
-                nearst_index = index;
+                nearst_index = polygon.index;
                 nearst_distance_sqr = distance_sqr;
             }
         }
 
-        return self.polygon.get(nearst_index).unwrap().index;
+        self.polygons[nearst_index.0].index
     }
 
     // 检查三个向量是否按顺序排布
     fn vertor_is_order(v1: &Matrix3x1<N>, v2: &Matrix3x1<N>, v3: &Matrix3x1<N>) -> bool {
-        let cross1 = v2.cross(&v1);
-        let cross2 = v2.cross(&v3);
+        let cross1 = v2.cross(v1);
+        let cross2 = v2.cross(v3);
 
-        return cross1.dot(&cross2) <= N::zero();
+        cross1.dot(&cross2) <= N::zero()
     }
 
-    //拉直: 漏斗算法
-    //http://liweizhaolili.lofter.com/post/1cc70144_86a939e
-    //http://digestingduck.blogspot.hk/2010/03/simple-stupid-funnel-algorithm.html
-    fn funnel(&self, astar: &mut AStar<N>, start: Point3<N>) -> Vec<Point3<N>> {
+    // 拉直: 漏斗算法
+    // http://liweizhaolili.lofter.com/post/1cc70144_86a939e
+    // http://digestingduck.blogspot.hk/2010/03/simple-stupid-funnel-algorithm.html
+    fn funnel(&self, segments_indies: &mut [usize], start: Point3<N>) -> Vec<Point3<N>> {
         let mut points: Vec<Point3<N>> = Vec::new();
 
-        if astar.result_indies.len() == 1 {
+        if segments_indies.len() == 1 {
             return points;
         }
 
-        let mut old_v1 = self.segments[astar.result_indies[0]].point1 - start;
-        let mut old_v2 = self.segments[astar.result_indies[0]].point2 - start;
-        let mut new_v1;
-        let mut new_v2;
+        let seg = &self.segments[segments_indies[0]];
+
+        let mut old_v1 = self.points[seg.start.0] - start;
+        let mut old_v2 = self.points[seg.end.0] - start;
+
         let mut last_point = start;
+
         points.push(start);
+
         let mut index = 1;
-        while index < astar.result_indies.len() {
-            new_v1 = self.segments[astar.result_indies[index]].point1 - last_point;
-            new_v2 = self.segments[astar.result_indies[index]].point2 - last_point;
+        while index < segments_indies.len() {
+            let seg = &self.segments[segments_indies[index]];
+
+            let new_v1 = self.points[seg.start.0] - last_point;
+            let new_v2 = self.points[seg.end.0] - last_point;
+
             let mut pos = None;
             if !NavMeshMap::vertor_is_order(&old_v1, &new_v1, &old_v2) {
                 //new_v1在old_v1，old_v2范围外
                 if NavMeshMap::vertor_is_order(&new_v1, &old_v1, &old_v2) {
-                    //靠近old_v1
+                    // 靠近old_v1
                     pos = Some(last_point + old_v1);
                 } else {
-                    //靠近old_v2
+                    // 靠近old_v2
                     pos = Some(last_point + old_v2);
                 }
             } else if !NavMeshMap::vertor_is_order(&old_v1, &new_v2, &old_v2) {
-                //new_v2在old_v1，old_v2范围外
+                // new_v2在old_v1，old_v2范围外
                 if NavMeshMap::vertor_is_order(&new_v2, &old_v1, &old_v2) {
                     //靠近old_v1
                     pos = Some(last_point + old_v1);
@@ -465,118 +308,183 @@ where
                 last_point = pos.unwrap();
             }
 
-            old_v1 = self.segments[astar.result_indies[index]].point1 - last_point;
-            old_v2 = self.segments[astar.result_indies[index]].point2 - last_point;
+            let seg = &self.segments[segments_indies[index]];
+            old_v1 = self.points[seg.start.0] - last_point;
+            old_v2 = self.points[seg.end.0] - last_point;
+
             index += 1;
         }
 
         points
-
-        //若测试屏蔽funnel算法的A*结果，将函数主体替换为下部分
-        // let mut points: Vec<Point3<N>> = Vec::new();
-        // for &index in self.astar.result_indies.iter() {
-        //     points.push(self.segments[index].center)
-        // }
-        // points
-    }
-}
-
-// 线段--Astart的Node
-struct Segment<'a, N>
-where
-    N: RealField,
-{
-    center: Point3<N>,            // 中点
-    point1: Point3<N>,            // 端点1
-    point2: Point3<N>,            // 端点2
-    neighbors: Vec<SegmentIndex>, // 相邻的边的index
-
-    phantom: PhantomData<&'a ()>,
-}
-
-impl<'a> Iterator for ASegmentIterator<'a> {
-    type Item = usize;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cur_index >= self.neighbors_ref.len() {
-            return None;
-        }
-        let result = self.neighbors_ref[self.cur_index];
-        self.cur_index += 1;
-        Some(result)
-    }
-}
-
-impl<'a, N> AStarMap<'a> for NavMeshMap<'a, N>
-where
-    N: RealField,
-{
-    type AStartNodeIter = ASegmentIterator<'a>;
-
-    // 获取遍历邻居节点的迭代器
-    fn get_neighbors(&'a self, cur: usize, _: Option<usize>) -> ASegmentIterator {
-        ASegmentIterator {
-            neighbors_ref: &self.segments[cur].neighbors,
-            cur_index: 0,
-        }
     }
 }
 
 // 多边形
+#[derive(Debug)]
 struct Polygon<N>
 where
-    N: RealField,
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
 {
+    // 多边形数组 的 索引
+    index: PolygonIndex,
+
+    // 中心点
     center: Point3<N>,
-    points: Vec<Point3<N>>,
+
+    // 顶点集合
+    points: Vec<PointIndex>,
+
+    // 边集合
     segments: Vec<SegmentIndex>,
-    index: usize,
-    min_point: Option<Point3<N>>, //AB框左下点
-    max_point: Option<Point3<N>>, //AB框右上点
+
+    // 包围盒
+    aabb: AABB<N>,
 }
 
 impl<N> Polygon<N>
 where
-    N: RealField,
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
 {
-    //给定点是否在多边形内
-    fn contain_point(&self, point: Point3<N>) -> bool {
-        if point.x < self.min_point.unwrap().x
-            || point.y < self.min_point.unwrap().y
-            || point.z < self.min_point.unwrap().z
-        {
-            return false;
+    fn new(
+        map: &mut NavMeshMap<N>,
+        segment_map: &mut HashMap<(PointIndex, PointIndex), SegmentIndex>,
+        index: PolygonIndex,
+        indexs: &[usize],
+    ) -> Self {
+        let mut p = Self {
+            index,
+            center: Default::default(),
+            points: vec![],
+            segments: vec![],
+            aabb: Default::default(),
+        };
+
+        // 点
+        for i in indexs.iter() {
+            p.add_point(map.points.as_slice(), (*i).into());
         }
 
-        if point.x > self.max_point.unwrap().x
-            || point.y > self.max_point.unwrap().y
-            || point.z > self.max_point.unwrap().z
-        {
+        p.compute_center(map.points.as_slice());
+
+        // 边
+        for i in 0..indexs.len() {
+            let j = (i + 1) % indexs.len();
+
+            let mut begin = indexs[i].into();
+            let mut end = indexs[j].into();
+            if begin > end {
+                std::mem::swap(&mut begin, &mut end);
+            }
+
+            let s_index = match segment_map.get(&(begin, end)) {
+                Some(index) => *index,
+                None => {
+                    // 没有创建
+                    let s = Segment::new(map.points.as_slice(), begin, end);
+
+                    let s_index = SegmentIndex(map.segments.len());
+
+                    map.segments.push(s);
+
+                    segment_map.insert((begin, end), s_index);
+
+                    s_index
+                }
+            };
+            p.add_segment(s_index);
+        }
+
+        // 邻居
+        for s in &p.segments {
+            let segment = &mut map.segments[s.0];
+            for n in &p.segments {
+                if n.0 != s.0 {
+                    segment.add_neighbor(*n);
+                }
+            }
+        }
+
+        p
+    }
+
+    /// 加 点
+    fn add_point(&mut self, pts: &[Point3<N>], index: PointIndex) {
+        let pt = &pts[index.0];
+
+        self.aabb.add_point(pt);
+        self.points.push(index);
+    }
+
+    // 计算 中心
+    fn compute_center(&mut self, pts: &[Point3<N>]) {
+        self.center = Default::default();
+
+        for i in self.points.iter() {
+            let pt = &pts[i.0];
+
+            self.center.x += pt.x;
+            self.center.y += pt.y;
+            self.center.z += pt.z;
+        }
+
+        let point_num = N::from_usize(self.points.len()).unwrap();
+        self.center.x /= point_num;
+        self.center.y /= point_num;
+        self.center.z /= point_num;
+    }
+
+    /// 加 边
+    fn add_segment(&mut self, index: SegmentIndex) {
+        self.segments.push(index);
+    }
+}
+
+impl<N> Polygon<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    fn is_contain_segment(&self, index: SegmentIndex) -> bool {
+        self.segments.contains(&index)
+    }
+
+    // 给定点是否在多边形内
+    fn is_contain_point(&self, points: &[Point3<N>], pt: &Point3<N>) -> bool {
+        if !self.aabb.contain_point(pt) {
             return false;
         }
 
         let mut last_cross = None;
-        for i in 0..self.points.len() {
-            let ii = (i + 1) % self.points.len();
-            let v1 = self.points[ii] - self.points[i];
-            let v2 = point - self.points[i];
+        for curr in 0..self.points.len() {
+            let next = (curr + 1) % self.points.len();
+
+            let pt_curr = &points[self.points[curr].0];
+            let pt_next = &points[self.points[next].0];
+
+            let v1 = pt_next - pt_curr;
+
+            let v2 = pt - pt_curr;
+
             let cross = v1.cross(&v2);
-            if last_cross != None {
-                if cross.dot(&last_cross.unwrap()) < N::zero() {
-                    return false;
-                }
+
+            if last_cross != None && cross.dot(&last_cross.unwrap()) < N::zero() {
+                return false;
             }
             last_cross = Some(cross);
         }
+
         true
     }
 
-    //给定点到该多边形距离最小的边的索引
+    // 给定点 到 该多边形 距离 最小的 边索引
     fn get_nearst_segment_index(&self, point: &Point3<N>, map: &NavMeshMap<N>) -> SegmentIndex {
         let mut nearst_segment_index: SegmentIndex = self.segments[0];
-        let center0 = map.segments.get(nearst_segment_index).unwrap().center;
+
+        let center0 = map.segments.get(nearst_segment_index.0).unwrap().center;
+
         let mut nearst_segment_distance_sqr = nalgebra::distance_squared(&center0, point);
+
         for segment_index in self.segments.iter() {
-            let center = map.segments.get(*segment_index).unwrap().center;
+            let center = map.segments.get(segment_index.0).unwrap().center;
             let distance_sqr = nalgebra::distance_squared(&center, point);
 
             if distance_sqr < nearst_segment_distance_sqr {
@@ -588,353 +496,369 @@ where
     }
 }
 
-// // ============================= 测试用例
+// 多边形列表的索引
+#[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct PolygonIndex(usize);
 
-#[cfg(test)]
-mod navmesh_astar {
-    use crate::ANavMeshFilter;
-    use nalgebra::Point3;
-    use raqote::*;
-    #[test]
-    fn test_navmesh() {
-        let contents =
-            std::fs::read_to_string("NavMesh.txt").expect("Something went wrong reading the file");
-
-        let mut read_points = false;
-        let mut read_indexs = false;
-        let mut vertexs: Vec<Point3<f64>> = Vec::new();
-        let mut indexs: Vec<Vec<usize>> = Vec::new();
-        for line in contents.lines() {
-            if line == "v" {
-                read_points = true;
-                read_indexs = false;
-            } else if line == "f" {
-                read_indexs = true;
-                read_points = false;
-            } else {
-                if read_points {
-                    let mut x = 0.0;
-                    let mut y = 0.0;
-                    let mut z = 0.0;
-                    for (i, contant) in line.split(" ").enumerate() {
-                        if i == 0 {
-                            x = contant.parse().unwrap();
-                        } else if i == 1 {
-                            y = contant.parse().unwrap();
-                        } else if i == 2 {
-                            z = contant.parse().unwrap();
-                        }
-                    }
-                    vertexs.push(Point3::new(x, y, z));
-                } else if read_indexs {
-                    let mut temp = Vec::new();
-                    for contant in line.split(" ") {
-                        temp.push(contant.parse().unwrap());
-                    }
-                    indexs.push(temp);
-                }
-            }
-        }
-        let mut map = crate::nav_mesh::NavMeshMap::new_map(&vertexs, &indexs, 5);
-        let end = Point3::new(614.0, 320.63, 696.0);
-        let start = Point3::new(1373.1, 307.43, 2729.8);
-
-        struct TestFilter {}
-
-        impl ANavMeshFilter<f64> for TestFilter {
-            fn is_pass(&self, _: Point3<f64>, _: Point3<f64>) -> bool {
-                true
-            }
-
-            fn get_cost(&self, from: Point3<f64>, to: Point3<f64>) -> f64 {
-                nalgebra::distance(&from, &to)
-            }
-        }
-        let test = TestFilter {};
-        let path = map.find_path(start, end, &test, 99999);
-        let mut min_x = f64::MAX;
-        let mut max_x = 0.0;
-        let mut min_z = f64::MAX;
-        let mut max_z = 0.0;
-        for vertex in vertexs.iter() {
-            if min_x > vertex.x {
-                min_x = vertex.x;
-            }
-            if max_x < vertex.x {
-                max_x = vertex.x;
-            }
-            if min_z > vertex.z {
-                min_z = vertex.z;
-            }
-            if max_z < vertex.z {
-                max_z = vertex.z;
-            }
-        }
-        let scale = 0.1;
-        let mut dt = DrawTarget::new(
-            ((max_x - min_x) * scale) as i32,
-            ((max_z - min_z) * scale) as i32,
-        );
-        let line_source = Source::Solid(SolidSource::from(Color::new(255, 0, 0, 0)));
-        let mut path_builder = PathBuilder::new();
-        let draw_opt = DrawOptions::new();
-        let stroke_style = StrokeStyle {
-            cap: LineCap::Round,
-            join: LineJoin::Round,
-            width: 2.,
-            miter_limit: 2.,
-            dash_array: vec![10., 0.],
-            dash_offset: 16.,
-        };
-
-        for pol_vertx_idxs in indexs {
-            for (iii, _) in pol_vertx_idxs.iter().enumerate() {
-                let point = vertexs.get(pol_vertx_idxs[iii]).unwrap();
-                if iii == 0 {
-                    path_builder.move_to(
-                        ((point.x - min_x) * scale) as f32,
-                        ((point.z - min_z) * scale) as f32,
-                    );
-                } else {
-                    path_builder.line_to(
-                        ((point.x - min_x) * scale) as f32,
-                        ((point.z - min_z) * scale) as f32,
-                    );
-                }
-            }
-            let point = vertexs.get(pol_vertx_idxs[0]).unwrap();
-            path_builder.line_to(
-                ((point.x - min_x) * scale) as f32,
-                ((point.z - min_z) * scale) as f32,
-            );
-        }
-        let mut draw_path = path_builder.finish();
-        dt.stroke(&draw_path, &line_source, &stroke_style, &draw_opt);
-
-        let path_source = Source::Solid(SolidSource::from(Color::new(255, 0, 255, 0)));
-        let mut path_builder = PathBuilder::new();
-        path_builder.move_to(
-            ((start.x - min_x) * scale) as f32,
-            ((start.z - min_z) * scale) as f32,
-        );
-        for path_point in path {
-            path_builder.line_to(
-                ((path_point.x - min_x) * scale) as f32,
-                ((path_point.z - min_z) * scale) as f32,
-            );
-        }
-        path_builder.line_to(
-            ((end.x - min_x) * scale) as f32,
-            ((end.z - min_z) * scale) as f32,
-        );
-        draw_path = path_builder.finish();
-        dt.stroke(&draw_path, &path_source, &stroke_style, &draw_opt);
-        dt.write_png("navmesh_path.png");
-    }
-
-    #[test]
-    fn test_funnel() {
-        use crate::ANavMeshFilter;
-        use nalgebra::Point3;
-        use raqote::*;
-        let contents = std::fs::read_to_string("FunnelTest.txt")
-            .expect("Something went wrong reading the file");
-
-        let mut read_points = false;
-        let mut read_indexs = false;
-        let mut vertexs: Vec<Point3<f64>> = Vec::new();
-        let mut indexs: Vec<Vec<usize>> = Vec::new();
-        for line in contents.lines() {
-            if line == "v" {
-                read_points = true;
-                read_indexs = false;
-            } else if line == "f" {
-                read_indexs = true;
-                read_points = false;
-            } else {
-                if read_points {
-                    let mut x = 0.0;
-                    let mut y = 0.0;
-                    let mut z = 0.0;
-                    for (i, contant) in line.split(" ").enumerate() {
-                        if i == 0 {
-                            x = contant.parse().unwrap();
-                        } else if i == 1 {
-                            y = contant.parse().unwrap();
-                        } else if i == 2 {
-                            z = contant.parse().unwrap();
-                        }
-                    }
-                    vertexs.push(Point3::new(x, y, z));
-                } else if read_indexs {
-                    let mut temp = Vec::new();
-                    for contant in line.split(" ") {
-                        temp.push(contant.parse().unwrap());
-                    }
-                    indexs.push(temp);
-                }
-            }
-        }
-        let mut map = crate::nav_mesh::NavMeshMap::new_map(&vertexs, &indexs, 5);
-        let end = Point3::new(373., 0.0, 372.);
-        let start = Point3::new(68.6, 0.0, 65.);
-
-        struct TestFilter {}
-
-        impl ANavMeshFilter<f64> for TestFilter {
-            fn is_pass(&self, _: Point3<f64>, _: Point3<f64>) -> bool {
-                true
-            }
-
-            fn get_cost(&self, from: Point3<f64>, to: Point3<f64>) -> f64 {
-                nalgebra::distance(&from, &to)
-            }
-        }
-        let test = TestFilter {};
-        let path = map.find_path(start, end, &test, 99999);
-        let mut min_x = f64::MAX;
-        let mut max_x = 0.0;
-        let mut min_z = f64::MAX;
-        let mut max_z = 0.0;
-        for vertex in vertexs.iter() {
-            if min_x > vertex.x {
-                min_x = vertex.x;
-            }
-            if max_x < vertex.x {
-                max_x = vertex.x;
-            }
-            if min_z > vertex.z {
-                min_z = vertex.z;
-            }
-            if max_z < vertex.z {
-                max_z = vertex.z;
-            }
-        }
-        let scale = 1.0;
-        let mut dt = DrawTarget::new(
-            ((max_x - min_x) * scale) as i32,
-            ((max_z - min_z) * scale) as i32,
-        );
-        let line_source = Source::Solid(SolidSource::from(Color::new(255, 0, 0, 0)));
-        let mut path_builder = PathBuilder::new();
-        let draw_opt = DrawOptions::new();
-        let stroke_style = StrokeStyle {
-            cap: LineCap::Round,
-            join: LineJoin::Round,
-            width: 2.,
-            miter_limit: 2.,
-            dash_array: vec![10., 0.],
-            dash_offset: 16.,
-        };
-
-        for pol_vertx_idxs in indexs {
-            for (iii, _) in pol_vertx_idxs.iter().enumerate() {
-                let point = vertexs.get(pol_vertx_idxs[iii]).unwrap();
-                if iii == 0 {
-                    path_builder.move_to(
-                        ((point.x - min_x) * scale) as f32,
-                        ((point.z - min_z) * scale) as f32,
-                    );
-                } else {
-                    path_builder.line_to(
-                        ((point.x - min_x) * scale) as f32,
-                        ((point.z - min_z) * scale) as f32,
-                    );
-                }
-            }
-            let point = vertexs.get(pol_vertx_idxs[0]).unwrap();
-            path_builder.line_to(
-                ((point.x - min_x) * scale) as f32,
-                ((point.z - min_z) * scale) as f32,
-            );
-        }
-        let mut draw_path = path_builder.finish();
-        dt.stroke(&draw_path, &line_source, &stroke_style, &draw_opt);
-
-        let path_source = Source::Solid(SolidSource::from(Color::new(255, 0, 255, 0)));
-        let mut path_builder = PathBuilder::new();
-        path_builder.move_to(
-            ((start.x - min_x) * scale) as f32,
-            ((start.z - min_z) * scale) as f32,
-        );
-        for path_point in path {
-            path_builder.line_to(
-                ((path_point.x - min_x) * scale) as f32,
-                ((path_point.z - min_z) * scale) as f32,
-            );
-        }
-        path_builder.line_to(
-            ((end.x - min_x) * scale) as f32,
-            ((end.z - min_z) * scale) as f32,
-        );
-        draw_path = path_builder.finish();
-        dt.stroke(&draw_path, &path_source, &stroke_style, &draw_opt);
-        dt.write_png("funneltest.png");
+impl From<usize> for PolygonIndex {
+    fn from(v: usize) -> Self {
+        Self(v)
     }
 }
 
+impl From<PolygonIndex> for usize {
+    fn from(v: PolygonIndex) -> Self {
+        v.0
+    }
+}
+
+// 在 边列表 的 索引
+#[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct SegmentIndex(usize);
+
+impl From<usize> for SegmentIndex {
+    fn from(v: usize) -> Self {
+        Self(v)
+    }
+}
+
+impl From<SegmentIndex> for usize {
+    fn from(v: SegmentIndex) -> Self {
+        v.0
+    }
+}
+
+// 线段--Astart的Node
+#[derive(Debug)]
+struct Segment<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    start: PointIndex, // 端点1
+    end: PointIndex,   // 端点2
+
+    center: Point3<N>, // 中点
+
+    neighbors: Vec<SegmentIndex>, // 相邻的边的index
+}
+
+impl<N> Segment<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    // 创建 边
+    // pts 顶点集合
+    // start，end 边的端点 在pts 的 索引
+    fn new(pts: &[Point3<N>], start: PointIndex, end: PointIndex) -> Self {
+        Self {
+            start,
+            end,
+            center: pts[start.0] + (pts[end.0] - pts[start.0]) / N::from_f64(2.0).unwrap(),
+            neighbors: vec![],
+        }
+    }
+
+    // 添加 改边的邻居，也就是 可达的边 在 多边形边数组 的 索引
+    fn add_neighbor(&mut self, index: SegmentIndex) {
+        self.neighbors.push(index);
+    }
+}
+
+// 包围盒
+#[derive(Debug)]
+struct AABB<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    min_pt: Point3<N>,
+    max_pt: Point3<N>,
+}
+
+impl<N> Default for AABB<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    fn default() -> Self {
+        let max = N::max_value().unwrap();
+        let min = N::min_value().unwrap();
+        Self {
+            min_pt: Point3::new(max, max, max),
+            max_pt: Point3::new(min, min, min),
+        }
+    }
+}
+
+impl<N> AABB<N>
+where
+    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
+{
+    // 添加点，扩展 AABB
+    #[inline]
+    fn add_point(&mut self, pt: &Point3<N>) {
+        self.min_pt.x = self.min_pt.x.min(pt.x);
+        self.min_pt.y = self.min_pt.y.min(pt.y);
+        self.min_pt.y = self.min_pt.z.min(pt.z);
+
+        self.max_pt.x = self.max_pt.x.max(pt.x);
+        self.max_pt.y = self.max_pt.y.max(pt.y);
+        self.max_pt.y = self.max_pt.z.max(pt.z);
+    }
+
+    // 给定点是否在 AABB 内
+    #[inline]
+    fn contain_point(&self, pt: &Point3<N>) -> bool {
+        pt.x >= self.min_pt.x
+            && pt.x <= self.max_pt.x
+            && pt.y >= self.min_pt.y
+            && pt.y <= self.max_pt.y
+            && pt.z >= self.min_pt.z
+            && pt.z <= self.max_pt.z
+    }
+}
+
+// =============== 测试
+
 #[cfg(test)]
-mod navtests {
-    use crate::ANavMeshFilter;
+mod navmesh_astar {
+    use super::SegmentIndex;
+    use crate::NavMeshMap;
     use nalgebra::Point3;
-    use test::Bencher;
+    use raqote::*;
 
-    #[bench]
-    fn bench_test(b: &mut Bencher) {
-        let contents =
-            std::fs::read_to_string("NavMesh.txt").expect("Something went wrong reading the file");
+    #[test]
+    fn navmesh_hello() {
+        // 初始化 导航网格数据
+        let points = vec![
+            Point3::new(0.0, 0.0, 0.0),   // 0
+            Point3::new(5.0, 0.0, 0.0),   // 1
+            Point3::new(0.0, 7.0, 0.0),   // 2
+            Point3::new(5.0, 7.0, 0.0),   // 3
+            Point3::new(10.0, 7.0, 0.0),  // 4
+            Point3::new(5.0, 12.0, 0.0),  // 5
+            Point3::new(10.0, 12.0, 0.0), // 6
+            Point3::new(26.0, 12.0, 0.0), // 7
+            Point3::new(10.0, 21.0, 0.0), // 8
+        ];
 
-        let mut read_points = false;
-        let mut read_indexs = false;
-        let mut vertexs: Vec<Point3<f64>> = Vec::new();
-        let mut indexs: Vec<Vec<usize>> = Vec::new();
-        for line in contents.lines() {
-            if line == "v" {
-                read_points = true;
-                read_indexs = false;
-            } else if line == "f" {
-                read_indexs = true;
-                read_points = false;
-            } else {
-                if read_points {
-                    let mut x = 0.0;
-                    let mut y = 0.0;
-                    let mut z = 0.0;
-                    for (i, contant) in line.split(" ").enumerate() {
-                        if i == 0 {
-                            x = contant.parse().unwrap();
-                        } else if i == 1 {
-                            y = contant.parse().unwrap();
-                        } else if i == 2 {
-                            z = contant.parse().unwrap();
-                        }
-                    }
-                    vertexs.push(Point3::new(x, y, z));
-                } else if read_indexs {
-                    let mut temp = Vec::new();
-                    for contant in line.split(" ") {
-                        temp.push(contant.parse().unwrap());
-                    }
-                    indexs.push(temp);
+        let indexs = [
+            vec![0, 2, 1],
+            vec![1, 2, 3],
+            vec![1, 3, 4],
+            vec![3, 5, 4],
+            vec![4, 5, 6],
+            vec![4, 6, 7],
+            vec![6, 8, 7],
+        ];
+
+        // 创建 导航网格
+        let mut map = NavMeshMap::new(points, indexs.as_slice());
+
+        // 寻路
+        let start = Point3::new(1.0, 1.0, 0.0);
+        let end = Point3::new(9.0, 19.0, 0.0);
+
+        let is_simply_path = true;
+        let paths = map
+            .find_path(start, end, is_simply_path, 100000, 100000)
+            .unwrap();
+
+        // 画图
+        let mut painter = Painter::new(50.0, &map.points);
+
+        painter.draw_nav_mesh(&map, Color::new(255, 255, 255, 255));
+
+        painter.draw_finding_paths(&paths, Color::new(255, 0, 255, 0));
+
+        painter.save("navmesh_hello.png");
+    }
+
+    #[test]
+    fn navmesh_simple() {
+        // 初始化 导航网格数据
+        let points = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+            Point3::new(0.0, 7.0, 0.0), // 2
+            Point3::new(5.0, 7.0, 0.0),
+            Point3::new(10.0, 7.0, 0.0),
+            Point3::new(5.0, 12.0, 0.0), // 5
+            Point3::new(10.0, 12.0, 0.0),
+            Point3::new(26.0, 12.0, 0.0),
+            Point3::new(10.0, 21.0, 0.0), // 8
+            Point3::new(26.0, 21.0, 0.0),
+            Point3::new(31.0, 21.0, 0.0),
+            Point3::new(26.0, 26.0, 0.0), // 11
+            Point3::new(31.0, 26.0, 0.0),
+            Point3::new(36.0, 26.0, 0.0),
+            Point3::new(31.0, 35.0, 0.0), // 14
+        ];
+
+        let indexs = vec![
+            vec![0, 2, 1],
+            vec![1, 2, 3],
+            vec![1, 3, 4],
+            vec![3, 5, 4],
+            vec![4, 5, 6],
+            vec![5, 8, 6],
+            vec![6, 8, 7],
+            vec![7, 8, 9],
+            vec![7, 9, 10],
+            vec![8, 11, 9],
+            vec![9, 11, 10],
+            vec![10, 11, 12],
+            vec![11, 14, 12],
+            vec![12, 14, 13],
+        ];
+
+        // 创建 导航网格
+        let mut map = NavMeshMap::new(points, indexs.as_slice());
+
+        // 寻路
+        let start = Point3::new(1.0, 1.0, 0.0);
+        let end = Point3::new(34.0, 30.0, 0.0);
+
+        let is_simply_path = true;
+        let paths = map
+            .find_path(start, end, is_simply_path, 100000, 100000)
+            .unwrap();
+
+        // 画图
+        let mut painter = Painter::new(20.0, &map.points);
+
+        painter.draw_nav_mesh(&map, Color::new(255, 255, 255, 255));
+
+        painter.draw_finding_paths(&paths, Color::new(255, 0, 255, 0));
+
+        painter.save("navmesh_simple.png");
+    }
+
+    // 画图方法
+    struct Painter {
+        dt: DrawTarget,
+        scale: f32,
+
+        min_pt: Point3<f32>,
+        max_pt: Point3<f32>,
+    }
+
+    impl Painter {
+        fn new(scale: f32, pts: &[Point3<f32>]) -> Self {
+            let mut min_pt = Point3::new(f32::MAX, f32::MAX, 0.0);
+            let mut max_pt = Point3::new(f32::MIN, f32::MIN, 0.0);
+
+            for p in pts.iter() {
+                min_pt.x = f32::min(min_pt.x, p.x);
+                min_pt.y = f32::min(min_pt.y, p.y);
+
+                max_pt.x = f32::max(max_pt.x, p.x);
+                max_pt.y = f32::max(max_pt.y, p.y);
+            }
+
+            let w = max_pt.x - min_pt.x;
+            let h = max_pt.y - min_pt.y;
+            let dt = DrawTarget::new((w * scale) as i32, (h * scale) as i32);
+
+            Self {
+                scale,
+
+                min_pt,
+                max_pt,
+
+                dt,
+            }
+        }
+
+        fn save(&self, file_name: &str) {
+            self.dt.write_png(file_name).unwrap();
+        }
+
+        fn draw_nav_mesh(&mut self, map: &NavMeshMap<f32>, color: Color) {
+            let mut builder = PathBuilder::new();
+
+            for polygon in map.polygons.iter() {
+                self.draw_polygon(&mut builder, map, &polygon.segments);
+            }
+
+            let stroke_style = StrokeStyle {
+                cap: LineCap::Round,
+                join: LineJoin::Round,
+                width: 6.,
+                miter_limit: 2.,
+                dash_array: vec![10., 0.],
+                dash_offset: 16.,
+            };
+
+            let line_source = Source::Solid(SolidSource::from(color));
+            self.dt.stroke(
+                &builder.finish(),
+                &line_source,
+                &stroke_style,
+                &DrawOptions::new(),
+            );
+        }
+
+        fn draw_finding_paths(&mut self, points: &[Point3<f32>], color: Color) {
+            let mut builder = PathBuilder::new();
+
+            let mut is_first = true;
+            for pt in points.iter() {
+                if is_first {
+                    is_first = false;
+
+                    builder.move_to(
+                        self.scale * (pt.x - self.min_pt.x),
+                        self.scale * (pt.y - self.min_pt.y),
+                    )
+                } else {
+                    builder.line_to(
+                        self.scale * (pt.x - self.min_pt.x),
+                        self.scale * (pt.y - self.min_pt.y),
+                    )
                 }
             }
+
+            let stroke_style = StrokeStyle {
+                cap: LineCap::Round,
+                join: LineJoin::Round,
+                width: 3.,
+                miter_limit: 2.,
+                dash_array: vec![10., 0.],
+                dash_offset: 16.,
+            };
+
+            let path_source = Source::Solid(SolidSource::from(color));
+            self.dt.stroke(
+                &builder.finish(),
+                &path_source,
+                &stroke_style,
+                &DrawOptions::new(),
+            );
         }
-        let mut map = crate::nav_mesh::NavMeshMap::new_map(&vertexs, &indexs, 5);
-        let end = Point3::new(614.0, 320.63, 696.0);
-        let start = Point3::new(1373.1, 307.43, 2729.8);
 
-        struct TestFilter {}
+        fn draw_polygon(
+            &self,
+            builder: &mut PathBuilder,
+            map: &NavMeshMap<f32>,
+            polygon_segments: &[SegmentIndex],
+        ) {
+            let pts = map.points.as_slice();
+            let segments = map.segments.as_slice();
 
-        impl ANavMeshFilter<f64> for TestFilter {
-            fn is_pass(&self, _: Point3<f64>, _: Point3<f64>) -> bool {
-                true
-            }
+            for index in polygon_segments {
+                let segment = &segments[index.0];
+                let begin = &pts[segment.start.0];
+                let end = &pts[segment.end.0];
 
-            fn get_cost(&self, from: Point3<f64>, to: Point3<f64>) -> f64 {
-                nalgebra::distance(&from, &to)
+                builder.move_to(
+                    self.scale * (begin.x - self.min_pt.x),
+                    self.scale * (begin.y - self.min_pt.y),
+                );
+
+                builder.line_to(
+                    self.scale * (end.x - self.min_pt.x),
+                    self.scale * (end.y - self.min_pt.y),
+                );
             }
         }
-        let test = TestFilter {};
-        b.iter(|| map.find_path(start, end, &test, 99999));
     }
 }

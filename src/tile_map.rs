@@ -84,18 +84,16 @@ where
                     iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
                     iter.add(row + 1, column + 1, self.column, parent.0, &self.nodes);
                 }
-            } else {
-                if column > 0 {
-                    iter.add(row, column - 1, self.column, parent.0, &self.nodes);
-                    iter.add(row - 1, column - 1, self.column, parent.0, &self.nodes);
-                    if column + 1 < self.column {
-                        iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                        iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
-                    }
-                } else if column + 1 < self.column {
+            } else if column > 0 {
+                iter.add(row, column - 1, self.column, parent.0, &self.nodes);
+                iter.add(row - 1, column - 1, self.column, parent.0, &self.nodes);
+                if column + 1 < self.column {
                     iter.add(row, column + 1, self.column, parent.0, &self.nodes);
                     iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
                 }
+            } else if column + 1 < self.column {
+                iter.add(row, column + 1, self.column, parent.0, &self.nodes);
+                iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
             }
         } else if row + 1 < self.row {
             iter.add(row + 1, column, self.column, parent.0, &self.nodes);
