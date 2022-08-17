@@ -13,13 +13,11 @@
 extern crate test;
 
 mod finder;
+mod nav_mesh;
 mod normal;
 mod tile_map;
-mod jump_point;
-mod nav_mesh;
 
 pub use finder::*;
 pub use normal::*;
-pub use jump_point::*;
 pub use tile_map::*;
 pub use nav_mesh::*;

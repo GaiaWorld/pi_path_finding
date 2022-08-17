@@ -6,6 +6,47 @@ use crate::*;
 use nalgebra::Scalar;
 use num_traits::{cast::AsPrimitive, FromPrimitive, Num};
 
+// 八方向枚举
+pub enum Direction {
+    Up = 1,
+    Down = 2,
+    Left = 4,
+    Right = 8,
+    UpRight = 16,
+    DownLeft = 32,
+    UpLeft = 64,
+    DownRight = 128,
+}
+
+impl Direction {
+    /// 获得方向对应的节点调整值
+    pub fn get_fix<M: TileMap>(&self, map: &M) -> isize {
+        match self {
+            Direction::Up => -(map.get_column() as isize),
+            Direction::Down => map.get_column() as isize,
+            Direction::Left => -1,
+            Direction::Right => 1,
+            Direction::UpRight => -(map.get_column() as isize) + 1,
+            Direction::DownLeft => map.get_column() as isize - 1,
+            Direction::UpLeft => -(map.get_column() as isize) - 1,
+            Direction::DownRight => map.get_column() as isize + 1,
+        }
+    }
+}
+
+/// ## A*寻路的抽象地图
+///
+/// 需要实现获取遍历邻居节点的迭代器的方法， 其中迭代器`Item`指定为`Node`，表示节点在全图节点集合的索引
+///
+pub trait TileMap {
+    /// 判断该点是否可以行走
+    fn is_ok(&self, cur: NodeIndex) -> bool;
+    /// 获得地图的行
+    fn get_row(&self) -> usize;
+    /// 获得地图的列
+    fn get_column(&self) -> usize;
+}
+
 /// ## 方格图
 /// 需指定方格图的行数和列数，每个方格的边长，边长如果是整数，则必须大于10
 ///
@@ -59,7 +100,7 @@ where
 {
     type NodeIter = TileNodeIterator;
 
-    fn get_neighbors<'a>(&'a self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
+    fn get_neighbors(&self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
         let mut iter = TileNodeIterator {
             arr: [0; 8],
             index: 0,
@@ -194,11 +235,8 @@ impl Iterator for TileNodeIterator {
 //#![feature(test)]
 #[cfg(test)]
 mod test_tilemap {
-    extern crate pcg_rand;
-    extern crate rand_core;
-
     use crate::*;
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::SeedableRng;
     use test::Bencher;
 
     #[test]

@@ -3,9 +3,7 @@
 //!
 
 use crate::{make_neighbors, AStar, Entry, Map, NodeIndex};
-use nalgebra::Scalar;
-use nalgebra::{Matrix3x1, Point3, RealField};
-use num_traits::{cast::AsPrimitive, FromPrimitive, Num};
+use nalgebra::{Point3, RealField, Vector3};
 use std::collections::HashMap;
 
 // 在 某个 多边形 点列表 的 索引
@@ -32,10 +30,7 @@ impl From<PointIndex> for usize {
 /// + 实际使用的时候就是数字类型，比如：i8/i16/i32/f32/f64；
 ///
 #[derive(Debug)]
-pub struct NavMeshMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+pub struct NavMeshMap<N: Copy + RealField> {
     // 该导航网格 所有的 顶点
     points: Vec<Point3<N>>,
 
@@ -46,10 +41,7 @@ where
     polygons: Vec<Polygon<N>>,
 }
 
-impl<N> NavMeshMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> NavMeshMap<N> {
     ///
     /// 新建 导航网格
     ///
@@ -148,14 +140,11 @@ where
     }
 }
 
-impl<N> Map<N> for NavMeshMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> Map<N> for NavMeshMap<N> {
     type NodeIter = NavMeshNodeIterator;
 
     // 注：这里的 NodeIndex 是 SegmentIndex
-    fn get_neighbors<'a>(&'a self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
+    fn get_neighbors(&self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
         let seg = &self.segments[cur.0];
         NavMeshNodeIterator::new(seg.neighbors.clone(), parent.0.into())
     }
@@ -220,10 +209,7 @@ impl Iterator for NavMeshNodeIterator {
     }
 }
 
-impl<N> NavMeshMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> NavMeshMap<N> {
     // 获取给定点所在的多边形，若该点不处于任何多边形内，则查找最近多边形
     fn get_polygon_by_point(&self, point: &Point3<N>) -> PolygonIndex {
         for polygon_ref in self.polygons.iter() {
@@ -249,7 +235,7 @@ where
     }
 
     // 检查三个向量是否按顺序排布
-    fn vertor_is_order(v1: &Matrix3x1<N>, v2: &Matrix3x1<N>, v3: &Matrix3x1<N>) -> bool {
+    fn vertor_is_order(v1: &Vector3<N>, v2: &Vector3<N>, v3: &Vector3<N>) -> bool {
         let cross1 = v2.cross(v1);
         let cross2 = v2.cross(v3);
 
@@ -321,10 +307,7 @@ where
 
 // 多边形
 #[derive(Debug)]
-struct Polygon<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+struct Polygon<N: Copy + RealField> {
     // 多边形数组 的 索引
     index: PolygonIndex,
 
@@ -341,10 +324,7 @@ where
     aabb: AABB<N>,
 }
 
-impl<N> Polygon<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> Polygon<N> {
     fn new(
         map: &mut NavMeshMap<N>,
         segment_map: &mut HashMap<(PointIndex, PointIndex), SegmentIndex>,
@@ -439,10 +419,7 @@ where
     }
 }
 
-impl<N> Polygon<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> Polygon<N> {
     fn is_contain_segment(&self, index: SegmentIndex) -> bool {
         self.segments.contains(&index)
     }
@@ -530,10 +507,7 @@ impl From<SegmentIndex> for usize {
 
 // 线段--Astart的Node
 #[derive(Debug)]
-struct Segment<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+struct Segment<N: Copy + RealField> {
     start: PointIndex, // 端点1
     end: PointIndex,   // 端点2
 
@@ -542,10 +516,7 @@ where
     neighbors: Vec<SegmentIndex>, // 相邻的边的index
 }
 
-impl<N> Segment<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> Segment<N> {
     // 创建 边
     // pts 顶点集合
     // start，end 边的端点 在pts 的 索引
@@ -566,18 +537,12 @@ where
 
 // 包围盒
 #[derive(Debug)]
-struct AABB<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+struct AABB<N: Copy + RealField> {
     min_pt: Point3<N>,
     max_pt: Point3<N>,
 }
 
-impl<N> Default for AABB<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> Default for AABB<N> {
     fn default() -> Self {
         let max = N::max_value().unwrap();
         let min = N::min_value().unwrap();
@@ -588,10 +553,7 @@ where
     }
 }
 
-impl<N> AABB<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd + RealField,
-{
+impl<N: Copy + RealField> AABB<N> {
     // 添加点，扩展 AABB
     #[inline]
     fn add_point(&mut self, pt: &Point3<N>) {

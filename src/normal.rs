@@ -19,7 +19,7 @@ where
     type NodeIter: Iterator<Item = NodeIndex>;
 
     /// 获取遍历邻居节点的迭代器
-    fn get_neighbors<'a>(&'a self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter;
+    fn get_neighbors(&self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter;
     /// 从`parent`节点到当前`cur`节点的`g`，即从父节点到当前节点的实际代价
     fn get_g(&self, cur: NodeIndex, parent: NodeIndex) -> N;
     /// 从当前`cur`节点到`end`节点的`h`，即从当前节点到终点的预估代价
@@ -109,4 +109,3 @@ pub fn make_neighbors<N: PartialOrd + Zero + Copy, M: Map<N>>(
     }
     n
 }
-
