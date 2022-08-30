@@ -1,7 +1,7 @@
 //!
 //! 标准A*算法需要的节点条目和创建节点邻居的函数
 
-use std::cmp::PartialOrd;
+use std::{cmp::PartialOrd, fmt::Debug};
 
 use num_traits::Zero;
 
@@ -13,7 +13,7 @@ use crate::*;
 ///
 pub trait Map<N>
 where
-    N: PartialOrd + Zero + Copy,
+    N: PartialOrd + Zero + Copy + Debug,
 {
     /// 迭代器的关联类型，指定了迭代器`Item`为`NodeIndex`
     type NodeIter: Iterator<Item = NodeIndex>;
@@ -27,14 +27,14 @@ where
 }
 
 /// 节点条目
-pub struct Entry<N: PartialOrd + Zero + Copy> {
+pub struct Entry<N: PartialOrd + Zero + Copy + Debug> {
     pub g: N,
     pub h: N,
     pub version: usize,
     pub parent: NodeIndex,
     pub state: NodeState,
 }
-impl<N: PartialOrd + Zero + Copy> Default for Entry<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> Default for Entry<N> {
     fn default() -> Self {
         Entry {
             g: N::zero(),
@@ -45,7 +45,7 @@ impl<N: PartialOrd + Zero + Copy> Default for Entry<N> {
         }
     }
 }
-impl<N: PartialOrd + Zero + Copy> NodeEntry<N> for Entry<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> NodeEntry<N> for Entry<N> {
     fn g(&self) -> N {
         self.g
     }
@@ -61,7 +61,7 @@ impl<N: PartialOrd + Zero + Copy> NodeEntry<N> for Entry<N> {
 }
 
 /// 创建节点邻居的函数
-pub fn make_neighbors<N: PartialOrd + Zero + Copy, M: Map<N>>(
+pub fn make_neighbors<N: PartialOrd + Zero + Copy + Debug, M: Map<N>>(
     map: &mut M,
     cur: NodeIndex,
     end: NodeIndex,
