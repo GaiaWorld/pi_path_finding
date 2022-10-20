@@ -8,12 +8,14 @@
 //! 寻路时，步骤1、创建起点的节点邻居nn。 步骤2、弹出nn中的最优邻居节点node，判断是否到达，如果没有到达，则获取该node的节点邻居nn1，如果open表不为空，从表头取最优的节点邻居nn2，比较nn2、nn1和nn，选择放入nn1或nn， 获得最优的新的nn。 重复该步骤2。
 //! 支持双端寻路，双端寻路一般比单端寻路速度快。如果 from-to 的代价不对称，则应该使用从起点出发的单端寻路
 
-use std::cmp::{Ordering, Reverse};
-use std::collections::BinaryHeap;
-use std::mem;
-
-use pi_null::Null;
 use num_traits::Zero;
+use pi_null::Null;
+use std::{
+    cmp::{Ordering, Reverse},
+    collections::BinaryHeap,
+    fmt::Debug,
+    mem,
+};
 
 /// A*节点索引
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default, Debug)]
@@ -54,7 +56,7 @@ pub enum AStarResult {
 }
 
 // A*寻路的节点条目
-pub trait NodeEntry<N: PartialOrd + Zero + Copy> {
+pub trait NodeEntry<N: PartialOrd + Zero + Copy + Debug> {
     fn g(&self) -> N;
     fn h(&self) -> N;
     fn state(&self) -> NodeState;
@@ -62,7 +64,7 @@ pub trait NodeEntry<N: PartialOrd + Zero + Copy> {
 }
 
 // A*搜索器， 记录每个节点的搜索过程中的信息
-pub struct Finder<N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> {
+pub struct Finder<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     // 节点数组
     pub nodes: Vec<E>,
     // 节点邻居的邻居表
@@ -76,14 +78,14 @@ pub struct Finder<N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> {
 /// ### 对`N`的约束，数字集合
 /// + 算术运算，可拷贝，可偏序比较；
 /// + 实际使用的时候就是数字类型，比如：i8/u8/i32/u32/f32/f64；
-pub struct AStar<N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> {
+pub struct AStar<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     // 从from搜to的Open表，最小堆
     from_open: BinaryHeap<Reverse<NodeNeighbors<N>>>,
     // A*搜索器
     finder: Finder<N, E>,
 }
 
-impl<N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> AStar<N, E> {
+impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E> {
     /// 实例化A*寻路算法的结构体
     /// 必须传入最大可能的全图节点容量，可选传入调用A*算法时可能搜索的节点数量以提前初始化节约性能，但也可为0
     pub fn with_capacity(map_capacity: usize, node_number: usize) -> Self {
@@ -191,16 +193,16 @@ impl<N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> AStar<N, E> {
 }
 
 // 结果的迭代器
-pub struct ResultIterator<'a, N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> {
+pub struct ResultIterator<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     finder: &'a Finder<N, E>,
     node: NodeIndex,
 }
-impl<'a, N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> ResultIterator<'a, N, E> {
+impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> ResultIterator<'a, N, E> {
     pub fn new(finder: &'a Finder<N, E>, node: NodeIndex) -> Self {
         ResultIterator { finder, node }
     }
 }
-impl<'a, N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> Iterator
+impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterator
     for ResultIterator<'a, N, E>
 {
     type Item = NodeIndex;
@@ -216,13 +218,15 @@ impl<'a, N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> Iterator
 }
 
 /// 节点邻居
-pub struct NodeNeighbors<N: PartialOrd + Zero + Copy> {
+#[derive(Debug)]
+pub struct NodeNeighbors<N: PartialOrd + Zero + Copy + Debug> {
     pub f: N,
     pub node: NodeIndex,
     pub start: usize,
     pub end: usize,
 }
-impl<N: PartialOrd + Zero + Copy> NodeNeighbors<N> {
+
+impl<N: PartialOrd + Zero + Copy + Debug> NodeNeighbors<N> {
     /// 从指定的节点邻居上获取其的最优邻居节点
     fn pop<E: NodeEntry<N> + Default>(
         &mut self,
@@ -252,21 +256,21 @@ impl<N: PartialOrd + Zero + Copy> NodeNeighbors<N> {
     }
 }
 // Ord trait所需
-impl<N: PartialOrd + Zero + Copy> Eq for NodeNeighbors<N> {}
+impl<N: PartialOrd + Zero + Copy + Debug> Eq for NodeNeighbors<N> {}
 // Ord trait所需
-impl<N: PartialOrd + Zero + Copy> PartialEq for NodeNeighbors<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> PartialEq for NodeNeighbors<N> {
     fn eq(&self, other: &Self) -> bool {
         self.f.eq(&other.f)
     }
 }
 // Ord trait所需
-impl<N: PartialOrd + Zero + Copy> PartialOrd for NodeNeighbors<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> PartialOrd for NodeNeighbors<N> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.f.partial_cmp(&other.f)
     }
 }
 // 通过f的比较实现Ord trait，以能在堆中排序
-impl<N: PartialOrd + Zero + Copy> Ord for NodeNeighbors<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> Ord for NodeNeighbors<N> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.f.partial_cmp(&other.f) {
             None => self.node.cmp(&other.node),
@@ -277,27 +281,27 @@ impl<N: PartialOrd + Zero + Copy> Ord for NodeNeighbors<N> {
 
 /// 排序节点
 #[derive(Clone)]
-pub struct FNode<N: PartialOrd + Zero + Copy> {
+pub struct FNode<N: PartialOrd + Zero + Copy + Debug> {
     pub f: N,
     pub node: NodeIndex,
 }
 
 // Ord trait所需
-impl<N: PartialOrd + Zero + Copy> Eq for FNode<N> {}
+impl<N: PartialOrd + Zero + Copy + Debug> Eq for FNode<N> {}
 // Ord trait所需
-impl<N: PartialOrd + Zero + Copy> PartialEq for FNode<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> PartialEq for FNode<N> {
     fn eq(&self, other: &Self) -> bool {
         self.f.eq(&other.f)
     }
 }
 // Ord trait所需
-impl<N: PartialOrd + Zero + Copy> PartialOrd for FNode<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> PartialOrd for FNode<N> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.f.partial_cmp(&other.f)
     }
 }
 // 通过f的比较实现Ord trait，以能在数组中排序
-impl<N: PartialOrd + Zero + Copy> Ord for FNode<N> {
+impl<N: PartialOrd + Zero + Copy + Debug> Ord for FNode<N> {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.f.partial_cmp(&other.f) {
             None => self.node.cmp(&other.node),
@@ -311,7 +315,7 @@ impl<N: PartialOrd + Zero + Copy> Ord for FNode<N> {
 /// ### 对`N`的约束，数字集合
 /// + 算术运算，可拷贝，可偏序比较；
 /// + 实际使用的时候就是数字类型，比如：i8/u8/i32/u32/f32/f64；
-pub struct DualAStar<N: PartialOrd + Zero + Copy, E: NodeEntry<N> + Default> {
+pub struct DualAStar<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     // 从from搜to的AStar
     astar: AStar<N, E>,
     // 从to搜from的Open表，最小堆

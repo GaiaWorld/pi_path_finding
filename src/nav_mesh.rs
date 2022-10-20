@@ -2,9 +2,9 @@
 //! 导航网格 的 A* 寻路
 //!
 
-use crate::{make_neighbors, AStar, Entry, Map, NodeIndex};
+use crate::{make_neighbors, AStar, AStarResult, Entry, Map, NodeIndex};
 use nalgebra::{Point3, RealField, Vector3};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 // 在 某个 多边形 点列表 的 索引
 #[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -30,7 +30,7 @@ impl From<PointIndex> for usize {
 /// + 实际使用的时候就是数字类型，比如：i8/i16/i32/f32/f64；
 ///
 #[derive(Debug)]
-pub struct NavMeshMap<N: Copy + RealField> {
+pub struct NavMeshMap<N: Copy + RealField + Debug> {
     // 该导航网格 所有的 顶点
     points: Vec<Point3<N>>,
 
@@ -41,7 +41,7 @@ pub struct NavMeshMap<N: Copy + RealField> {
     polygons: Vec<Polygon<N>>,
 }
 
-impl<N: Copy + RealField> NavMeshMap<N> {
+impl<N: Copy + RealField + Debug> NavMeshMap<N> {
     ///
     /// 新建 导航网格
     ///
@@ -65,6 +65,14 @@ impl<N: Copy + RealField> NavMeshMap<N> {
             let p = Polygon::new(&mut map, &mut segment_map, polygon_index, indexs);
             map.polygons.push(p);
         }
+
+        println!("seg 114 = {:?}", map.segments[114]);
+        println!("seg 112 = {:?}", map.segments[112]);
+        println!("seg 113 = {:?}", map.segments[113]);
+        println!("seg 115 = {:?}", map.segments[115]);
+        println!("seg 116 = {:?}", map.segments[116]);
+        println!("seg 117 = {:?}", map.segments[117]);
+        println!("seg 118 = {:?}", map.segments[118]);
 
         map
     }
@@ -105,8 +113,20 @@ impl<N: Copy + RealField> NavMeshMap<N> {
         let end = NodeIndex(end_segment_index.0);
 
         let r = astar.find(start, end, max_numbers, &mut |cur, end, finder| {
-            make_neighbors(self, cur, end, finder)
+            let r = make_neighbors(self, cur, end, finder);
+            println!("======== {:?}", r);
+            r
         });
+
+        match r {
+            AStarResult::Found => {}
+            AStarResult::NotFound => {
+                return Err("AStarResult::NotFound".to_string());
+            }
+            AStarResult::LimitNotFound(_) => {
+                return Err("AStarResult::LimitNotFound".to_string());
+            }
+        }
 
         let mut result_indies: Vec<usize> = astar.result_iter(end).map(|v| v.0).collect();
         result_indies.reverse();
@@ -140,7 +160,7 @@ impl<N: Copy + RealField> NavMeshMap<N> {
     }
 }
 
-impl<N: Copy + RealField> Map<N> for NavMeshMap<N> {
+impl<N: Copy + RealField + Debug> Map<N> for NavMeshMap<N> {
     type NodeIter = NavMeshNodeIterator;
 
     // 注：这里的 NodeIndex 是 SegmentIndex
@@ -209,7 +229,7 @@ impl Iterator for NavMeshNodeIterator {
     }
 }
 
-impl<N: Copy + RealField> NavMeshMap<N> {
+impl<N: Copy + RealField + Debug> NavMeshMap<N> {
     // 获取给定点所在的多边形，若该点不处于任何多边形内，则查找最近多边形
     fn get_polygon_by_point(&self, point: &Point3<N>) -> PolygonIndex {
         for polygon_ref in self.polygons.iter() {
@@ -307,7 +327,7 @@ impl<N: Copy + RealField> NavMeshMap<N> {
 
 // 多边形
 #[derive(Debug)]
-struct Polygon<N: Copy + RealField> {
+struct Polygon<N: Copy + RealField + Debug> {
     // 多边形数组 的 索引
     index: PolygonIndex,
 
@@ -324,7 +344,7 @@ struct Polygon<N: Copy + RealField> {
     aabb: AABB<N>,
 }
 
-impl<N: Copy + RealField> Polygon<N> {
+impl<N: Copy + RealField + Debug> Polygon<N> {
     fn new(
         map: &mut NavMeshMap<N>,
         segment_map: &mut HashMap<(PointIndex, PointIndex), SegmentIndex>,
@@ -419,7 +439,7 @@ impl<N: Copy + RealField> Polygon<N> {
     }
 }
 
-impl<N: Copy + RealField> Polygon<N> {
+impl<N: Copy + RealField + Debug> Polygon<N> {
     fn is_contain_segment(&self, index: SegmentIndex) -> bool {
         self.segments.contains(&index)
     }
@@ -507,7 +527,7 @@ impl From<SegmentIndex> for usize {
 
 // 线段--Astart的Node
 #[derive(Debug)]
-struct Segment<N: Copy + RealField> {
+struct Segment<N: Copy + RealField + Debug> {
     start: PointIndex, // 端点1
     end: PointIndex,   // 端点2
 
@@ -516,7 +536,7 @@ struct Segment<N: Copy + RealField> {
     neighbors: Vec<SegmentIndex>, // 相邻的边的index
 }
 
-impl<N: Copy + RealField> Segment<N> {
+impl<N: Copy + RealField + Debug> Segment<N> {
     // 创建 边
     // pts 顶点集合
     // start，end 边的端点 在pts 的 索引
@@ -537,12 +557,12 @@ impl<N: Copy + RealField> Segment<N> {
 
 // 包围盒
 #[derive(Debug)]
-struct AABB<N: Copy + RealField> {
+struct AABB<N: Copy + RealField + Debug> {
     min_pt: Point3<N>,
     max_pt: Point3<N>,
 }
 
-impl<N: Copy + RealField> Default for AABB<N> {
+impl<N: Copy + RealField + Debug> Default for AABB<N> {
     fn default() -> Self {
         let max = N::max_value().unwrap();
         let min = N::min_value().unwrap();
@@ -553,7 +573,7 @@ impl<N: Copy + RealField> Default for AABB<N> {
     }
 }
 
-impl<N: Copy + RealField> AABB<N> {
+impl<N: Copy + RealField + Debug> AABB<N> {
     // 添加点，扩展 AABB
     #[inline]
     fn add_point(&mut self, pt: &Point3<N>) {
@@ -739,6 +759,560 @@ mod navmesh_astar {
         painter.draw_finding_paths(&paths, Color::new(255, 0, 255, 0));
 
         painter.save("navmesh_simple.png");
+    }
+
+    #[test]
+    fn navmesh_testdata() {
+        let vdata: [f32; 432] = [
+            -16f32,
+            0.04563978f32,
+            2.5f32,
+            -16.33333f32,
+            0.04563975f32,
+            2.666667f32,
+            -16.33333f32,
+            0.04563975f32,
+            7.666667f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            -16f32,
+            0.2956398f32,
+            0f32,
+            -16f32,
+            0.04563975f32,
+            2.5f32,
+            -16.33333f32,
+            0.04563975f32,
+            12.5f32,
+            -16.33333f32,
+            0.04563975f32,
+            17f32,
+            0f32,
+            0.04563975f32,
+            17f32,
+            -16.83333f32,
+            0.04563975f32,
+            12f32,
+            -16.33333f32,
+            0.04563975f32,
+            12.5f32,
+            0f32,
+            0.04563975f32,
+            17f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            -16.33333f32,
+            0.04563975f32,
+            7.666667f32,
+            -16.83333f32,
+            0.04563975f32,
+            8.166667f32,
+            -42.66667f32,
+            0.04563975f32,
+            8.166667f32,
+            -42.66667f32,
+            0.04563975f32,
+            12f32,
+            -16.83333f32,
+            0.04563975f32,
+            12f32,
+            -16.83333f32,
+            0.04563975f32,
+            8.166667f32,
+            -3f32,
+            0.04563975f32,
+            42.66667f32,
+            0f32,
+            0.04563975f32,
+            42.66667f32,
+            0f32,
+            0.04563975f32,
+            40f32,
+            -3.333332f32,
+            0.04563975f32,
+            38.16667f32,
+            -9.833332f32,
+            0.04563975f32,
+            37.83334f32,
+            -8.833332f32,
+            0.04563975f32,
+            38.83334f32,
+            -4f32,
+            0.04563975f32,
+            37f32,
+            0f32,
+            0.04563975f32,
+            32f32,
+            0f32,
+            0.04563975f32,
+            25.83333f32,
+            -3f32,
+            0.04563975f32,
+            42.66667f32,
+            -3.333332f32,
+            0.04563975f32,
+            38.16667f32,
+            -4f32,
+            0.04563975f32,
+            37.5f32,
+            -8.833332f32,
+            0.04563975f32,
+            38.83334f32,
+            -9f32,
+            0.04563975f32,
+            39.5f32,
+            -8.833332f32,
+            0.04563975f32,
+            38.83334f32,
+            -4f32,
+            0.04563975f32,
+            37.5f32,
+            -4f32,
+            0.04563975f32,
+            37f32,
+            -16f32,
+            1.04564f32,
+            -7.333334f32,
+            -16f32,
+            0.2956398f32,
+            0f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            0f32,
+            1.212306f32,
+            -11f32,
+            -15f32,
+            1.212306f32,
+            -11f32,
+            -15.5f32,
+            1.212306f32,
+            -11.66667f32,
+            -42.66667f32,
+            1.04564f32,
+            -11.66667f32,
+            -42.66667f32,
+            1.04564f32,
+            -7.833334f32,
+            -16.5f32,
+            1.04564f32,
+            -7.833334f32,
+            -15f32,
+            1.212306f32,
+            -11f32,
+            -16.5f32,
+            1.04564f32,
+            -7.833334f32,
+            -16f32,
+            1.04564f32,
+            -7.333334f32,
+            -15f32,
+            1.212306f32,
+            -11f32,
+            -42.66667f32,
+            1.04564f32,
+            -7.833334f32,
+            -42.66667f32,
+            1.04564f32,
+            -11.66667f32,
+            -44.33333f32,
+            1.04564f32,
+            -11.66667f32,
+            -44.33333f32,
+            1.04564f32,
+            -7.833334f32,
+            -42.66667f32,
+            0.04563975f32,
+            12f32,
+            -42.66667f32,
+            0.04563975f32,
+            8.166667f32,
+            -45.83333f32,
+            0.04563975f32,
+            8.166667f32,
+            -45.83333f32,
+            0.04563975f32,
+            12f32,
+            0f32,
+            0.04563975f32,
+            44.33334f32,
+            0f32,
+            0.04563975f32,
+            42.66667f32,
+            -3f32,
+            0.04563975f32,
+            42.66667f32,
+            26f32,
+            1.04564f32,
+            -30.5f32,
+            26.5f32,
+            1.04564f32,
+            -31.16667f32,
+            26.33333f32,
+            1.04564f32,
+            -31.66667f32,
+            23.33333f32,
+            1.04564f32,
+            -33.83334f32,
+            5.166667f32,
+            1.212306f32,
+            -11f32,
+            11f32,
+            1.04564f32,
+            -12f32,
+            5.166667f32,
+            1.212306f32,
+            -11f32,
+            11f32,
+            1.212306f32,
+            -11.5f32,
+            11f32,
+            1.04564f32,
+            -12f32,
+            12.83333f32,
+            0.2956398f32,
+            0f32,
+            12.83333f32,
+            1.212306f32,
+            -11f32,
+            11.5f32,
+            1.212306f32,
+            -11f32,
+            12.83333f32,
+            0.2956398f32,
+            0f32,
+            11.5f32,
+            1.212306f32,
+            -11f32,
+            11f32,
+            1.212306f32,
+            -11.5f32,
+            5.166667f32,
+            1.212306f32,
+            -11f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            5.166667f32,
+            1.212306f32,
+            -11f32,
+            0f32,
+            1.212306f32,
+            -11f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            12.5f32,
+            0.04563975f32,
+            3.333333f32,
+            12.83333f32,
+            0.04563975f32,
+            3.166667f32,
+            12.83333f32,
+            0.2956398f32,
+            0f32,
+            1.833333f32,
+            0.04563975f32,
+            23.16667f32,
+            0f32,
+            0.04563975f32,
+            25.83333f32,
+            0f32,
+            0.04563975f32,
+            32f32,
+            11.33333f32,
+            0.04563975f32,
+            18f32,
+            5.833333f32,
+            0.04563975f32,
+            18.5f32,
+            12.5f32,
+            0.04563975f32,
+            3.333333f32,
+            12.83333f32,
+            0.2956398f32,
+            0f32,
+            0f32,
+            0.5456398f32,
+            0f32,
+            0f32,
+            0.04563975f32,
+            17f32,
+            5.833333f32,
+            0.04563975f32,
+            17f32,
+            11.5f32,
+            0.04563975f32,
+            17.33333f32,
+            12.5f32,
+            0.04563975f32,
+            17f32,
+            12.5f32,
+            0.04563975f32,
+            3.333333f32,
+            5.833333f32,
+            0.04563975f32,
+            17f32,
+            6.166667f32,
+            0.04563975f32,
+            17.33333f32,
+            6.166667f32,
+            0.04563975f32,
+            17.33333f32,
+            5.833333f32,
+            0.04563975f32,
+            18.5f32,
+            11.33333f32,
+            0.04563975f32,
+            18f32,
+            11.5f32,
+            0.04563975f32,
+            17.33333f32,
+            41.33334f32,
+            5.462307f32,
+            42.66667f32,
+            42.5f32,
+            5.712307f32,
+            42.33334f32,
+            41.83334f32,
+            5.378973f32,
+            40.5f32,
+            41.33334f32,
+            5.462307f32,
+            42.66667f32,
+            41.83334f32,
+            5.378973f32,
+            40.5f32,
+            41.83334f32,
+            5.29564f32,
+            39.16667f32,
+            37.83334f32,
+            4.29564f32,
+            39.83334f32,
+            36.83334f32,
+            4.128973f32,
+            40.66667f32,
+            36.83334f32,
+            4.128973f32,
+            40.66667f32,
+            32.16667f32,
+            3.128973f32,
+            42.66667f32,
+            41.33334f32,
+            5.462307f32,
+            42.66667f32,
+            42.66667f32,
+            5.712307f32,
+            36.33334f32,
+            42.66667f32,
+            7.54564f32,
+            23.5f32,
+            37.83334f32,
+            4.29564f32,
+            39.83334f32,
+            41.83334f32,
+            5.29564f32,
+            39.16667f32,
+            0f32,
+            0.04563975f32,
+            42.66667f32,
+            4.833333f32,
+            0.04563975f32,
+            42.66667f32,
+            0f32,
+            0.04563975f32,
+            40f32,
+            4.833333f32,
+            0.04563975f32,
+            42.66667f32,
+            0f32,
+            0.04563975f32,
+            42.66667f32,
+            0f32,
+            0.04563975f32,
+            44.33334f32,
+            8.833334f32,
+            0.04563975f32,
+            49.16667f32,
+            16.66667f32,
+            0.04563975f32,
+            49.16667f32,
+            26.33333f32,
+            2.128973f32,
+            49.16667f32,
+            41.33334f32,
+            5.462307f32,
+            42.66667f32,
+            32.16667f32,
+            3.128973f32,
+            42.66667f32,
+            17.33333f32,
+            0.04563976f32,
+            49.16667f32,
+            17.66667f32,
+            0.2956398f32,
+            53.16667f32,
+            26.33333f32,
+            2.128973f32,
+            49.16667f32,
+            17.33333f32,
+            0.04563975f32,
+            49.16667f32,
+            17.66667f32,
+            0.2956398f32,
+            53.16667f32,
+            17.33333f32,
+            0.04563975f32,
+            49.16667f32,
+            16.66667f32,
+            0.04563975f32,
+            49.16667f32,
+            16.66667f32,
+            0.04563975f32,
+            49.16667f32,
+            8.833334f32,
+            0.04563975f32,
+            49.16667f32,
+            16.33333f32,
+            0.04563975f32,
+            53.5f32,
+            17.66667f32,
+            0.2956398f32,
+            53.16667f32,
+            42.66667f32,
+            7.54564f32,
+            23.5f32,
+            42.66667f32,
+            5.712307f32,
+            36.33334f32,
+            49.16667f32,
+            10.37897f32,
+            14.33333f32,
+            45.5f32,
+            9.712307f32,
+            13.16667f32,
+        ];
+        // 初始化 导航网格数据
+        let mut points = vec![];
+        let count = vdata.len() / 3;
+        for i in 0..count {
+            let x = vdata[i * 3 + 0];
+            let y = vdata[i * 3 + 2];
+            let z = 0.;
+            points.push(Point3::new(x, y, z));
+        }
+
+        let idata: [usize; 216] = [
+            0, 1, 2, // 0
+            0, 2, 3, // 1
+            4, 5, 6, // 2
+            7, 8, 9, // 3
+            10, 11, 12, // 4
+            10, 12, 13, // 5
+            10, 13, 14, // 6
+            10, 14, 15, // 7
+            16, 17, 18, // 8
+            16, 18, 19, // 9
+            20, 21, 22, // 10
+            20, 22, 23, // 11
+            24, 25, 26, // 12
+            24, 26, 27, // 13
+            24, 27, 28, // 14
+            29, 30, 31, // 15
+            29, 31, 32, // 16
+            29, 32, 33, // 17
+            34, 35, 36, // 18
+            37, 38, 39, // 19
+            37, 39, 40, // 20
+            37, 40, 41, // 21
+            42, 43, 44, // 22
+            42, 44, 45, // 23
+            42, 45, 46, // 24
+            47, 48, 49, // 1
+            50, 51, 52, // 1
+            50, 52, 53, // 1
+            54, 55, 56, // 1
+            54, 56, 57, // 1
+            58, 59, 60, // 1
+            61, 62, 63, // 1
+            61, 63, 64, // 1
+            61, 64, 65, // 1
+            61, 65, 66, // 1
+            67, 68, 69, // 1
+            70, 71, 72, // 1
+            73, 74, 75, // 1
+            73, 75, 76, // 1
+            73, 76, 77, // 1
+            78, 79, 80, // 1
+            81, 82, 83, // 1
+            84, 85, 86, // 1
+            84, 86, 87, // 1
+            84, 87, 88, // 1
+
+            89, 90, 91, // 1
+            89, 91, 92, // 1
+            89, 92, 93, // 1
+            
+            94, 95, 96, // 1
+            94, 96, 97, // 1
+            94, 97, 98, // 1
+            99, 100, 101, // 1
+            99, 101, 102, // 1
+            103, 104, 105, // 1
+            106, 107, 108, // 1
+            106, 108, 109, // 1
+            106, 109, 110, // 1
+            111, 112, 113, // 1
+            114, 115, 116, // 1
+            114, 116, 117, // 1
+            118, 119, 120, // 1
+            121, 122, 123, // 1
+            121, 123, 124, // 1
+            121, 124, 125, // 1
+            126, 127, 128, // 1
+            126, 128, 129, // 1
+            130, 131, 132, // 1
+            133, 134, 135, // 1
+            136, 137, 138, // 1
+            136, 138, 139, // 1
+            140, 141, 142, // 1
+            140, 142, 143, // 1
+        ];
+
+        let mut indexs = vec![];
+        let count = idata.len() / 3;
+        for i in 0..count {
+            let x = idata[i * 3 + 0];
+            let y = idata[i * 3 + 1];
+            let z = idata[i * 3 + 2];
+            indexs.push(vec![x, y, z]);
+        }
+
+        // 创建 导航网格
+        let mut map = NavMeshMap::new(points, indexs.as_slice());
+
+        // 寻路
+        let start = Point3::new(1.0, 1.0, 0.0);
+        let end = Point3::new(-34.0, -9.5, 0.0);
+
+        let is_simply_path = false;
+        let paths = map
+            .find_path(start, end, is_simply_path, 100000, 100000)
+            .unwrap();
+
+        // 画图
+        let mut painter = Painter::new(50.0, &map.points);
+
+        painter.draw_nav_mesh(&map, Color::new(255, 255, 255, 255));
+
+        painter.draw_finding_paths(&paths, Color::new(255, 0, 255, 0));
+
+        painter.save("navmesh_testdata.png");
     }
 
     // 画图方法
