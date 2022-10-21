@@ -76,6 +76,7 @@ where
     // 该图节点间斜45°的长度， 根号2 * cell_len
     oblique_len: N,
     get_neighbors_call: fn(usize, usize, &Vec<bool>, NodeIndex, NodeIndex) -> TileNodeIterator,
+    get_h_call: fn(N, N, N, N) -> N,
 }
 
 impl<N> NormalTileMap<N>
@@ -98,6 +99,7 @@ where
             oblique_len: FromPrimitive::from_f32(cell_len.as_() as f32 * std::f32::consts::SQRT_2)
                 .unwrap(),
             get_neighbors_call: Self::get_neighbors_eight,
+            get_h_call: Self::get_h_eight
         }
     }
 
@@ -105,9 +107,11 @@ where
         match mode {
             ENormalTileMapMode::FourDirect => {
                 self.get_neighbors_call = Self::get_neighbors_four;
+                self.get_h_call = Self::get_h_four;
             },
             ENormalTileMapMode::EightDirect => {
                 self.get_neighbors_call = Self::get_neighbors_eight;
+                self.get_h_call = Self::get_h_eight;
             },
         }
     }
@@ -211,6 +215,12 @@ where
         }
         iter
     }
+    fn get_h_four(oblique_len: N, cell_len: N, t: N, r: N) -> N {
+        (t + t + r) * cell_len
+    }
+    fn get_h_eight(oblique_len: N, cell_len: N, t: N, r: N) -> N {
+        t * oblique_len + r * cell_len
+    }
 }
 
 impl<N> Map<N> for NormalTileMap<N>
@@ -249,7 +259,8 @@ where
         let t: N = FromPrimitive::from_usize(min).unwrap();
         let r: N = FromPrimitive::from_usize(max - min).unwrap();
         // 45度斜线的长度 + 剩余直线的长度
-        t * self.oblique_len + r * self.cell_len
+        let call = &self.get_h_call;
+        call(self.oblique_len, self.cell_len, t, r)
     }
 }
 
