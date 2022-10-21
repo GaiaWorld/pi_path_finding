@@ -47,6 +47,12 @@ pub trait TileMap {
     fn get_column(&self) -> usize;
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ENormalTileMapMode {
+    FourDirect,
+    EightDirect,
+}
+
 /// ## 方格图
 /// 需指定方格图的行数和列数，每个方格的边长，边长如果是整数，则必须大于10
 ///
@@ -69,6 +75,7 @@ where
     cell_len: N,
     // 该图节点间斜45°的长度， 根号2 * cell_len
     oblique_len: N,
+    get_neighbors_call: fn(usize, usize, &Vec<bool>, NodeIndex, NodeIndex) -> TileNodeIterator,
 }
 
 impl<N> NormalTileMap<N>
@@ -90,7 +97,125 @@ where
             cell_len,
             oblique_len: FromPrimitive::from_f32(cell_len.as_() as f32 * std::f32::consts::SQRT_2)
                 .unwrap(),
+            get_neighbors_call: Self::get_neighbors_eight,
         }
+    }
+
+    pub fn mode(&mut self, mode: ENormalTileMapMode) {
+        match mode {
+            ENormalTileMapMode::FourDirect => {
+                self.get_neighbors_call = Self::get_neighbors_four;
+            },
+            ENormalTileMapMode::EightDirect => {
+                self.get_neighbors_call = Self::get_neighbors_eight;
+            },
+        }
+    }
+
+    pub fn get_neighbors_four(self_row: usize, self_column: usize, self_nodes: &Vec<bool>, cur: NodeIndex, parent: NodeIndex) -> TileNodeIterator {
+        let mut iter = TileNodeIterator {
+            arr: [0; 8],
+            index: 0,
+        };
+        let row = cur.0 / self_column;
+        let column = cur.0 % self_column;
+        if row > 0 {
+            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
+            if row + 1 < self_row {
+                iter.add(row + 1, column, self_column, parent.0, &self_nodes);
+                if column > 0 {
+                    iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                    // iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+                    // iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+                    if column + 1 < self_column {
+                        iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                        // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                        // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                    }
+                } else if column + 1 < self_column {
+                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                    // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                    // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                }
+            } else if column > 0 {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                // iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+                if column + 1 < self_column {
+                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                    // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                }
+            } else if column + 1 < self_column {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+            }
+        } else if row + 1 < self_row {
+            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
+            if column > 0 {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                // iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+                if column + 1 < self_column {
+                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                    // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                }
+            } else if column + 1 < self_column {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+            }
+        }
+        iter
+    }
+    pub fn get_neighbors_eight(self_row: usize, self_column: usize, self_nodes: &Vec<bool>, cur: NodeIndex, parent: NodeIndex) -> TileNodeIterator {
+
+        let mut iter = TileNodeIterator {
+            arr: [0; 8],
+            index: 0,
+        };
+        let row = cur.0 / self_column;
+        let column = cur.0 % self_column;
+        if row > 0 {
+            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
+            if row + 1 < self_row {
+                iter.add(row + 1, column, self_column, parent.0, &self_nodes);
+                if column > 0 {
+                    iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                    iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+                    iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+                    if column + 1 < self_column {
+                        iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                        iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                        iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                    }
+                } else if column + 1 < self_column {
+                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                    iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                    iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                }
+            } else if column > 0 {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+                if column + 1 < self_column {
+                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                    iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                }
+            } else if column + 1 < self_column {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+            }
+        } else if row + 1 < self_row {
+            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
+            if column > 0 {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+                if column + 1 < self_column {
+                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                    iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                }
+            } else if column + 1 < self_column {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+            }
+        }
+        iter
     }
 }
 
@@ -101,56 +226,8 @@ where
     type NodeIter = TileNodeIterator;
 
     fn get_neighbors(&self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
-        let mut iter = TileNodeIterator {
-            arr: [0; 8],
-            index: 0,
-        };
-        let row = cur.0 / self.column;
-        let column = cur.0 % self.column;
-        if row > 0 {
-            iter.add(row - 1, column, self.column, parent.0, &self.nodes);
-            if row + 1 < self.row {
-                iter.add(row + 1, column, self.column, parent.0, &self.nodes);
-                if column > 0 {
-                    iter.add(row, column - 1, self.column, parent.0, &self.nodes);
-                    iter.add(row - 1, column - 1, self.column, parent.0, &self.nodes);
-                    iter.add(row + 1, column - 1, self.column, parent.0, &self.nodes);
-                    if column + 1 < self.column {
-                        iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                        iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
-                        iter.add(row + 1, column + 1, self.column, parent.0, &self.nodes);
-                    }
-                } else if column + 1 < self.column {
-                    iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                    iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
-                    iter.add(row + 1, column + 1, self.column, parent.0, &self.nodes);
-                }
-            } else if column > 0 {
-                iter.add(row, column - 1, self.column, parent.0, &self.nodes);
-                iter.add(row - 1, column - 1, self.column, parent.0, &self.nodes);
-                if column + 1 < self.column {
-                    iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                    iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
-                }
-            } else if column + 1 < self.column {
-                iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                iter.add(row - 1, column + 1, self.column, parent.0, &self.nodes);
-            }
-        } else if row + 1 < self.row {
-            iter.add(row + 1, column, self.column, parent.0, &self.nodes);
-            if column > 0 {
-                iter.add(row, column - 1, self.column, parent.0, &self.nodes);
-                iter.add(row + 1, column - 1, self.column, parent.0, &self.nodes);
-                if column + 1 < self.column {
-                    iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                    iter.add(row + 1, column + 1, self.column, parent.0, &self.nodes);
-                }
-            } else if column + 1 < self.column {
-                iter.add(row, column + 1, self.column, parent.0, &self.nodes);
-                iter.add(row + 1, column + 1, self.column, parent.0, &self.nodes);
-            }
-        }
-        iter
+        let call = &self.get_neighbors_call;
+        call(self.row, self.column, &self.nodes, cur, parent)
     }
 
     fn get_g(&self, cur: NodeIndex, parent: NodeIndex) -> N {

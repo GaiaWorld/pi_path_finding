@@ -762,7 +762,7 @@ mod navmesh_astar {
     }
 
     #[test]
-    fn navmesh_testdata() {
+    fn navmesh_testdata2() {
         let vdata: [f32; 432] = [
             -16f32,
             0.04563978f32,
