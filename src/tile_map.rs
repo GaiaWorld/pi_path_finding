@@ -119,47 +119,36 @@ where
         };
         let row = cur.0 / self_column;
         let column = cur.0 % self_column;
-        if row > 0 {
-            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
-            if row + 1 < self_row {
-                iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-                if column > 0 {
-                    iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                    // iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-                    // iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-                    if column + 1 < self_column {
-                        iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                        // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                        // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                    }
-                } else if column + 1 < self_column {
-                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                    // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                    // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                }
-            } else if column > 0 {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                // iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-                if column + 1 < self_column {
-                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                    // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                }
-            } else if column + 1 < self_column {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                // iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-            }
-        } else if row + 1 < self_row {
+        if row <= 0 {
             iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-            if column > 0 {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                // iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-                if column + 1 < self_column {
-                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                    // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                }
-            } else if column + 1 < self_column {
+            if column <= 0 {
                 iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                // iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+            } else if self_column - 1 <= column {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+            } else {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+            }
+        } else if self_row - 1 <= row {
+            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
+            if column <= 0 {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+            } else if self_column - 1 <= column {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+            } else {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+            }
+        } else {
+            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
+            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
+            if column <= 0 {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+            } else if self_column - 1 <= column {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+            } else {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
             }
         }
         iter
@@ -172,47 +161,52 @@ where
         };
         let row = cur.0 / self_column;
         let column = cur.0 % self_column;
-        if row > 0 {
-            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
-            if row + 1 < self_row {
-                iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-                if column > 0 {
-                    iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                    iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-                    iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-                    if column + 1 < self_column {
-                        iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                        iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                        iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                    }
-                } else if column + 1 < self_column {
-                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                    iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                    iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                }
-            } else if column > 0 {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-                if column + 1 < self_column {
-                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                    iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                }
-            } else if column + 1 < self_column {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-            }
-        } else if row + 1 < self_row {
+        if row <= 0 {
             iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-            if column > 0 {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-                if column + 1 < self_column {
-                    iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                    iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                }
-            } else if column + 1 < self_column {
+            if column <= 0 {
                 iter.add(row, column + 1, self_column, parent.0, &self_nodes);
                 iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+            } else if self_column - 1 <= column {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+            } else {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+            }
+        } else if self_row - 1 <= row {
+            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
+            if column <= 0 {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+            } else if self_column - 1 <= column {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+            } else {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+            }
+        } else {
+            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
+            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
+            if column <= 0 {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+            } else if self_column - 1 <= column {
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
+            } else {
+                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
+                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
             }
         }
         iter
