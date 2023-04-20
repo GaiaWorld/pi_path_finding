@@ -11,7 +11,7 @@ keywords = ["pi", "PathFinding", "AStar"]
 [dependencies]
 pi_null = "0.1"
 
-nalgebra = "0.31"
+nalgebra = "0.32"
 num-traits = "0.2"
 num-derive = "0.3"
 
