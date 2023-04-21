@@ -2,7 +2,7 @@
 //! 导航网格 的 A* 寻路
 //!
 
-use crate::{make_neighbors, AStar, AStarResult, Entry, Map, NodeIndex};
+use crate::*;
 use nalgebra::{Point3, RealField, Vector3};
 use std::{collections::HashMap, fmt::Debug};
 
@@ -87,13 +87,13 @@ impl<N: Copy + RealField + Debug> NavMeshMap<N> {
     /// 返回 有效路径坐标序列
     ///
     /// + 超出Nav-Mesh图范围的开始点及目标点会被强行拉至Nav-Mesh图范围内
-    fn find_path(
+    pub fn find_path(
         &mut self,
         start_pos: Point3<N>,
         end_pos: Point3<N>,
         is_simply_path: bool,
-        max_nodes: usize,
         max_numbers: usize,
+        astar: &mut AStar<N, Entry<N>>,
     ) -> Result<Vec<Point3<N>>, String> {
         // 起点多边形
         let start_polygon = self.get_polygon_by_point(&start_pos);
@@ -107,16 +107,10 @@ impl<N: Copy + RealField + Debug> NavMeshMap<N> {
         let end_segment_index =
             self.polygons[end_polygon.0].get_nearst_segment_index(&end_pos, self);
 
-        let mut astar: AStar<N, Entry<N>> = AStar::with_capacity(self.segments.len(), max_nodes);
-
         let start = NodeIndex(start_segment_index.0);
         let end = NodeIndex(end_segment_index.0);
 
-        let r = astar.find(start, end, max_numbers, &mut |cur, end, finder| {
-            let r = make_neighbors(self, cur, end, finder);
-            println!("======== {:?}", r);
-            r
-        });
+        let r = astar.find(start, end, max_numbers, self, make_neighbors);
 
         match r {
             AStarResult::Found => {}
@@ -603,7 +597,7 @@ impl<N: Copy + RealField + Debug> AABB<N> {
 #[cfg(test)]
 mod navmesh_astar {
     use super::SegmentIndex;
-    use crate::NavMeshMap;
+    use crate::{NavMeshMap, AStar};
     use nalgebra::Point3;
     use raqote::*;
 
@@ -640,8 +634,9 @@ mod navmesh_astar {
         let end = Point3::new(9.0, 19.0, 0.0);
 
         let is_simply_path = true;
+        let mut astar = AStar::with_capacity(map.segments.len(), 100000);
         let paths = map
-            .find_path(start, end, is_simply_path, 100000, 100000)
+            .find_path(start, end, is_simply_path, 100000, &mut astar)
             .unwrap();
 
         // 画图
@@ -700,8 +695,9 @@ mod navmesh_astar {
         let end = Point3::new(34.0, 30.0, 0.0);
 
         let is_simply_path = true;
+        let mut astar = AStar::with_capacity(map.segments.len(), 100000);
         let paths = map
-            .find_path(start, end, is_simply_path, 100000, 100000)
+            .find_path(start, end, is_simply_path, 100000, &mut astar)
             .unwrap();
 
         // 画图
@@ -747,8 +743,9 @@ mod navmesh_astar {
         let end = Point3::new(47.0, 15.0, 0.0);
 
         let is_simply_path = false;
+        let mut astar = AStar::with_capacity(map.segments.len(), 100000);
         let paths = map
-            .find_path(start, end, is_simply_path, 100000, 100000)
+            .find_path(start, end, is_simply_path, 100000, &mut astar)
             .unwrap();
 
         // 画图
@@ -1301,8 +1298,9 @@ mod navmesh_astar {
         let end = Point3::new(-34.0, -9.5, 0.0);
 
         let is_simply_path = false;
+        let mut astar = AStar::with_capacity(map.segments.len(), 100000);
         let paths = map
-            .find_path(start, end, is_simply_path, 100000, 100000)
+            .find_path(start, end, is_simply_path, 100000, &mut astar)
             .unwrap();
 
         // 画图

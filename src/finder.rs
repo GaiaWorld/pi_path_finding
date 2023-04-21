@@ -16,10 +16,20 @@ use std::{
     fmt::Debug,
     mem,
 };
+use std::ops::Deref;
 
 /// A*节点索引
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default, Debug)]
 pub struct NodeIndex(pub usize);
+
+impl Deref for NodeIndex {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 
 impl Null for NodeIndex {
     fn is_null(&self) -> bool {
@@ -118,18 +128,19 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
     ///
     /// + 3、如果open表为空，则返回NotFound。
     ///
-    pub fn find(
+    pub fn find<Arg>(
         &mut self,
         start: NodeIndex,
         end: NodeIndex,
         max_number: usize,
-        make_neighbors: &mut impl FnMut(NodeIndex, NodeIndex, &mut Finder<N, E>) -> NodeNeighbors<N>,
+        arg: &mut Arg,
+        make_neighbors: fn(&mut Arg, NodeIndex, NodeIndex, &mut Finder<N, E>) -> NodeNeighbors<N>,
     ) -> AStarResult {
         self.from_open.clear();
         self.finder.neighbors.clear();
         self.finder.version += 1;
         // 创建起点的节点邻居
-        let mut nn = make_neighbors(start, end, &mut self.finder);
+        let mut nn = make_neighbors(arg, start, end, &mut self.finder);
         loop {
             // 弹出nn中的最优邻居节点NodeIndex，弹出后，nn代价大小会变
             let node = nn.pop(&self.finder, NodeState::FromOpen);
@@ -151,7 +162,7 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
             // 如果nn有效
             if nn.start < nn.end {
                 // 创建该点的节点邻居
-                let mut nn1 = make_neighbors(node, end, &mut self.finder);
+                let mut nn1 = make_neighbors(arg, node, end, &mut self.finder);
                 // 如果该节点邻居可用
                 if nn1.start < nn1.end {
                     // 如果nn1优于nn， 则交换两者
@@ -167,7 +178,7 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
                 }
             } else {
                 // 如果nn无效则用新的nn
-                nn = make_neighbors(node, end, &mut self.finder);
+                nn = make_neighbors(arg, node, end, &mut self.finder);
                 continue;
             }
             // 用堆上的nn2和nn比较
@@ -193,15 +204,12 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
 }
 
 // 结果的迭代器
+#[derive(Clone)]
 pub struct ResultIterator<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
-    finder: &'a Finder<N, E>,
-    node: NodeIndex,
+    pub finder: &'a Finder<N, E>,
+    pub node: NodeIndex,
 }
-impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> ResultIterator<'a, N, E> {
-    pub fn new(finder: &'a Finder<N, E>, node: NodeIndex) -> Self {
-        ResultIterator { finder, node }
-    }
-}
+
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterator
     for ResultIterator<'a, N, E>
 {
@@ -218,7 +226,7 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
 }
 
 /// 节点邻居
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeNeighbors<N: PartialOrd + Zero + Copy + Debug> {
     pub f: N,
     pub node: NodeIndex,

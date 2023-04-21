@@ -7,8 +7,6 @@
 //! nav_mesh 模块，实现了 3维导航网格的A*寻路（包含路径拉直）
 //!
 
-#![feature(generic_associated_types)]
-
 #![feature(test)]
 extern crate test;
 
@@ -16,8 +14,10 @@ mod finder;
 mod nav_mesh;
 mod normal;
 mod tile_map;
+mod angle;
 
 pub use finder::*;
 pub use normal::*;
 pub use tile_map::*;
 pub use nav_mesh::*;
+pub use angle::*;
