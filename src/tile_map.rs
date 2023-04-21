@@ -1,305 +1,15 @@
 //!
-//! A*寻路的网格图，需指定方格图的行数和列数，每个方格的边长，边长如果是整数，则必须大于10
+//! A*寻路的瓦片地图
+//! 需指定行数和列数，每个瓦片的边长和斜角长度，默认为100和141。
+//! 瓦片信息包括3个信息：瓦片是否障碍， 右边是否障碍，下边是否障碍。这些是从左到右，从上到下地进行排序的。一个矩阵表示的地图也称为瓦片地图。
+//! 获得邻居时， 如果斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
 //!
 
 use crate::*;
-use nalgebra::Scalar;
-use num_traits::{cast::AsPrimitive, FromPrimitive, Num, Zero};
+use num_traits::Zero;
 use pi_null::Null;
 use pi_spatial::tilemap::*;
-use std::{
-    fmt::Debug,
-    mem,
-};
-// // 八方向枚举
-// pub enum Direction {
-//     Up = 1,
-//     Down = 2,
-//     Left = 4,
-//     Right = 8,
-//     UpRight = 16,
-//     DownLeft = 32,
-//     UpLeft = 64,
-//     DownRight = 128,
-// }
-
-// impl Direction {
-//     /// 获得方向对应的节点调整值
-//     pub fn get_fix(&self, column: isize) -> isize {
-//         match self {
-//             Direction::Up => -column,
-//             Direction::Down => column,
-//             Direction::Left => -1,
-//             Direction::Right => 1,
-//             Direction::UpRight => -column + 1,
-//             Direction::DownLeft => column - 1,
-//             Direction::UpLeft => -column - 1,
-//             Direction::DownRight => column + 1,
-//         }
-//     }
-// }
-
-#[derive(Debug, Clone, Copy)]
-pub enum ENormalTileMapMode {
-    FourDirect,
-    EightDirect,
-}
-
-/// ## 方格图
-/// 需指定方格图的行数和列数，每个方格的边长，边长如果是整数，则必须大于10
-///
-/// ### 对`N`的约束
-///
-/// + 算术运算，可拷贝，可偏序比较， 可与整数相互转换；
-/// + 实际使用的时候就是数字类型，比如：i8/i16/i32/f32/f64；
-///
-pub struct NormalTileMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd,
-{
-    // 该图所有节点
-    pub nodes: Vec<bool>,
-    // 该图最大行数
-    pub row: usize,
-    // 该图最大列数
-    pub column: usize,
-    // 该图节点的长度， 如果是整数，则必须大于10
-    cell_len: N,
-    // 该图节点间斜45°的长度， 根号2 * cell_len
-    oblique_len: N,
-    get_neighbors_call: fn(usize, usize, &Vec<bool>, NodeIndex, NodeIndex) -> TileNodeIterator,
-    get_h_call: fn(N, N, N, N) -> N,
-}
-
-impl<N> NormalTileMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd,
-{
-    ///
-    /// 新建一个方格图
-    ///
-    /// 需指定方格图的行数和列数，每个方格的边长，以及全图在场景中的起始坐标
-    pub fn new(row: usize, column: usize, cell_len: N) -> Self {
-        let len = row * column;
-        let mut nodes = Vec::with_capacity(len);
-        nodes.resize_with(len, Default::default);
-        NormalTileMap {
-            nodes,
-            row,
-            column,
-            cell_len,
-            oblique_len: FromPrimitive::from_f32(cell_len.as_() as f32 * std::f32::consts::SQRT_2)
-                .unwrap(),
-            get_neighbors_call: Self::get_neighbors_eight,
-            get_h_call: Self::get_h_eight,
-        }
-    }
-
-    pub fn mode(&mut self, mode: ENormalTileMapMode) {
-        match mode {
-            ENormalTileMapMode::FourDirect => {
-                self.get_neighbors_call = Self::get_neighbors_four;
-                self.get_h_call = Self::get_h_four;
-            }
-            ENormalTileMapMode::EightDirect => {
-                self.get_neighbors_call = Self::get_neighbors_eight;
-                self.get_h_call = Self::get_h_eight;
-            }
-        }
-    }
-
-    pub fn get_neighbors_four(
-        self_row: usize,
-        self_column: usize,
-        self_nodes: &Vec<bool>,
-        cur: NodeIndex,
-        parent: NodeIndex,
-    ) -> TileNodeIterator {
-        let mut iter = TileNodeIterator {
-            arr: [0; 8],
-            index: 0,
-        };
-        let row = cur.0 / self_column;
-        let column = cur.0 % self_column;
-        if row <= 0 {
-            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-            if column <= 0 {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-            } else if self_column - 1 <= column {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-            } else {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-            }
-        } else if self_row - 1 <= row {
-            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
-            if column <= 0 {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-            } else if self_column - 1 <= column {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-            } else {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-            }
-        } else {
-            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
-            if column <= 0 {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-            } else if self_column - 1 <= column {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-            } else {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-            }
-        }
-        iter
-    }
-    pub fn get_neighbors_eight(
-        self_row: usize,
-        self_column: usize,
-        self_nodes: &Vec<bool>,
-        cur: NodeIndex,
-        parent: NodeIndex,
-    ) -> TileNodeIterator {
-        let mut iter = TileNodeIterator {
-            arr: [0; 8],
-            index: 0,
-        };
-        let row = cur.0 / self_column;
-        let column = cur.0 % self_column;
-        if row <= 0 {
-            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-            if column <= 0 {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-            } else if self_column - 1 <= column {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-            } else {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-            }
-        } else if self_row - 1 <= row {
-            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
-            if column <= 0 {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-            } else if self_column - 1 <= column {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-            } else {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-            }
-        } else {
-            iter.add(row + 1, column, self_column, parent.0, &self_nodes);
-            iter.add(row - 1, column, self_column, parent.0, &self_nodes);
-            if column <= 0 {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-            } else if self_column - 1 <= column {
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-            } else {
-                iter.add(row, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row + 1, column - 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column + 1, self_column, parent.0, &self_nodes);
-                iter.add(row - 1, column - 1, self_column, parent.0, &self_nodes);
-            }
-        }
-        iter
-    }
-    fn get_h_four(_oblique_len: N, cell_len: N, t: N, r: N) -> N {
-        (t + t + r) * cell_len
-    }
-    fn get_h_eight(oblique_len: N, cell_len: N, t: N, r: N) -> N {
-        t * oblique_len + r * cell_len
-    }
-}
-
-impl<N> Map<N> for NormalTileMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd,
-{
-    type NodeIter = TileNodeIterator;
-
-    fn get_neighbors(&self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
-        let call = &self.get_neighbors_call;
-        call(self.row, self.column, &self.nodes, cur, parent)
-    }
-
-    fn get_g(&self, cur: NodeIndex, parent: NodeIndex) -> N {
-        let to_row = cur.0 / self.column;
-        let from_row = parent.0 / self.column;
-        if from_row == to_row {
-            return self.cell_len;
-        }
-        let to_column = cur.0 % self.column;
-        let from_column = parent.0 % self.column;
-        if from_column == to_column {
-            return self.cell_len;
-        }
-        self.oblique_len
-    }
-    fn get_h(&self, cur: NodeIndex, end: NodeIndex) -> N {
-        let from_row = cur.0 / self.column;
-        let to_row = end.0 / self.column;
-        let from_column = cur.0 % self.column;
-        let to_column = end.0 % self.column;
-        let x = (from_column as isize - to_column as isize).abs() as usize;
-        let y = (from_row as isize - to_row as isize).abs() as usize;
-        let (min, max) = if x <= y { (x, y) } else { (y, x) };
-
-        let t: N = FromPrimitive::from_usize(min).unwrap();
-        let r: N = FromPrimitive::from_usize(max - min).unwrap();
-        // 45度斜线的长度 + 剩余直线的长度
-        let call = &self.get_h_call;
-        call(self.oblique_len, self.cell_len, t, r)
-    }
-}
-
-
-// 遍历邻居的迭代器
-#[derive(Debug, Clone)]
-pub struct TileNodeIterator {
-    arr: [usize; 8],
-    index: usize,
-}
-impl TileNodeIterator {
-    fn add(
-        &mut self,
-        row: usize,
-        column: usize,
-        map_column: usize,
-        parent: usize,
-        vec: &Vec<bool>,
-    ) {
-        let i = row * map_column + column;
-        if i != parent && !vec[i] {
-            self.arr[self.index] = i;
-            self.index += 1;
-        }
-    }
-}
-impl Iterator for TileNodeIterator {
-    type Item = NodeIndex;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == 0 {
-            return None;
-        }
-        self.index -= 1;
-        Some(NodeIndex(self.arr[self.index]))
-    }
-}
+use std::{fmt::Debug, mem};
 
 // 瓦片内的障碍
 #[repr(C)]
@@ -313,31 +23,23 @@ pub enum TileObstacle {
 #[inline]
 pub fn get_obstacle(nodes: &Vec<u8>, index: usize) -> (bool, bool, bool) {
     let i = nodes[index] as usize;
-    ((i & TileObstacle::Center as usize) > 0, (i & TileObstacle::Right as usize) > 0, (i & TileObstacle::Down as usize) > 0 )
+    (
+        (i & TileObstacle::Center as usize) > 0,
+        (i & TileObstacle::Right as usize) > 0,
+        (i & TileObstacle::Down as usize) > 0,
+    )
 }
 /// 设置flag
 #[inline]
 pub fn set_flag(value: usize, b: bool, flag: usize) -> usize {
     if b {
         value | flag
-    }else{
+    } else {
         value & !flag
     }
 }
-/// ## 瓦片地图
-/// 需指定行数和列数，每个瓦片的边长，边长如果是整数，则必须大于10。
-/// 瓦片信息包括3个信息：瓦片是否障碍， 右边是否障碍，下边是否障碍。这些是从左到右，从上到下地进行排序的。一个矩阵表示的地图也称为瓦片地图。
-/// 获得邻居时， 如果斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
-///
-/// ### 对`N`的约束
-///
-/// + 算术运算，可拷贝，可偏序比较， 可与整数相互转换；
-/// + 实际使用的时候就是数字类型，比如：i8/i16/i32/f32/f64；
-///
-pub struct TileMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd,
-{
+
+pub struct TileMap {
     // 该图所有节点是否有障碍， 右边是否障碍，下边是否障碍
     pub nodes: Vec<u8>,
     // 该图最大行数
@@ -345,22 +47,19 @@ where
     // 该图最大列数
     pub column: usize,
     // 该图节点的长度， 如果是整数，则必须大于10
-    cell_len: N,
+    cell_len: usize,
     // 该图节点间斜45°的长度， 根号2 * cell_len
-    oblique_len: N,
+    oblique_len: usize,
     // 瓦片总数量
     count: usize,
 }
 
-impl<N> TileMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd,
-{
+impl TileMap {
     ///
     /// 新建一个方格图
     ///
     /// 需指定方格图的行数和列数，每个方格的边长，以及全图在场景中的起始坐标
-    pub fn new(row: usize, column: usize, cell_len: N) -> Self {
+    pub fn new(row: usize, column: usize, cell_len: usize, oblique_len: usize) -> Self {
         let len = row * column;
         let mut nodes = Vec::with_capacity(len);
         nodes.resize_with(len, Default::default);
@@ -369,8 +68,7 @@ where
             row,
             column,
             cell_len,
-            oblique_len: FromPrimitive::from_f32(cell_len.as_() as f32 * std::f32::consts::SQRT_2)
-                .unwrap(),
+            oblique_len,
             count: row * column,
         }
     }
@@ -378,20 +76,29 @@ where
         self.nodes[node.0] = tile_obstacle;
     }
     pub fn set_node_center_obstacle(&mut self, node: NodeIndex, center_obstacle: bool) {
-        self.nodes[node.0] = set_flag(self.nodes[node.0] as usize, center_obstacle, TileObstacle::Center as usize) as u8;
+        self.nodes[node.0] = set_flag(
+            self.nodes[node.0] as usize,
+            center_obstacle,
+            TileObstacle::Center as usize,
+        ) as u8;
     }
     pub fn set_node_right_obstacle(&mut self, node: NodeIndex, right_obstacle: bool) {
-        self.nodes[node.0] = set_flag(self.nodes[node.0] as usize, right_obstacle, TileObstacle::Right as usize) as u8;
+        self.nodes[node.0] = set_flag(
+            self.nodes[node.0] as usize,
+            right_obstacle,
+            TileObstacle::Right as usize,
+        ) as u8;
     }
     pub fn set_node_down_obstacle(&mut self, node: NodeIndex, down_obstacle: bool) {
-        self.nodes[node.0] = set_flag(self.nodes[node.0] as usize, down_obstacle, TileObstacle::Down as usize) as u8;
+        self.nodes[node.0] = set_flag(
+            self.nodes[node.0] as usize,
+            down_obstacle,
+            TileObstacle::Down as usize,
+        ) as u8;
     }
 }
 
-impl<N> Map<N> for TileMap<N>
-where
-    N: Scalar + Num + AsPrimitive<usize> + FromPrimitive + PartialOrd,
-{
+impl Map<usize> for TileMap {
     type NodeIter = NodeIterator;
 
     fn get_neighbors(&self, cur: NodeIndex, parent: NodeIndex) -> Self::NodeIter {
@@ -520,30 +227,21 @@ where
         NodeIterator { arr, index: 0 }
     }
 
-    fn get_g(&self, cur: NodeIndex, parent: NodeIndex) -> N {
-        let to_row = cur.0 / self.column;
-        let from_row = parent.0 / self.column;
-        if from_row == to_row {
-            return self.cell_len;
-        }
-        let to_column = cur.0 % self.column;
-        let from_column = parent.0 % self.column;
-        if from_column == to_column {
+    fn get_g(&self, cur: NodeIndex, parent: NodeIndex) -> usize {
+        if cur.0 == parent.0 + 1 || cur.0 + 1 == parent.0 || cur.0 == parent.0 + self.column || cur.0 + self.column == parent.0 {
             return self.cell_len;
         }
         self.oblique_len
     }
-    fn get_h(&self, cur: NodeIndex, end: NodeIndex) -> N {
-        let from_row = cur.0 / self.column;
-        let to_row = end.0 / self.column;
-        let from_column = cur.0 % self.column;
-        let to_column = end.0 % self.column;
-        let x = (from_column as isize - to_column as isize).abs() as usize;
-        let y = (from_row as isize - to_row as isize).abs() as usize;
+    fn get_h(&self, cur: NodeIndex, end: NodeIndex) -> usize {
+        let (from_column, from_row) = column_row(self.column, cur);
+        let (to_column, to_row) = column_row(self.column, end);
+        let x = (from_column - to_column).abs() as usize;
+        let y = (from_row - to_row).abs() as usize;
         let (min, max) = if x <= y { (x, y) } else { (y, x) };
 
-        let t: N = FromPrimitive::from_usize(min).unwrap();
-        let r: N = FromPrimitive::from_usize(max - min).unwrap();
+        let t = min;
+        let r = max - min;
         // 45度斜线的长度 + 剩余直线的长度
         t * self.oblique_len + r * self.cell_len
     }
@@ -591,8 +289,8 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathFil
         } else {
             Null::null()
         };
-        let (r, c) = row_column(column, start);
-        let (cur_row, cur_column) = row_column(column, cur);
+        let (c, r) = column_row(column, start);
+        let (cur_column, cur_row) = column_row(column, cur);
         let angle = Angle::new(cur_column - c, cur_row - r);
         PathFilterIter {
             result,
@@ -617,7 +315,7 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
             return Some(mem::replace(&mut self.start, Null::null()));
         }
         for node in &mut self.result {
-            let (r, c) = row_column(self.column, node);
+            let (c, r) = column_row(self.column, node);
             let angle = Angle::new(c - self.cur_column, r - self.cur_row);
             self.cur_row = r;
             self.cur_column = c;
@@ -639,22 +337,43 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
 #[derive(Clone)]
 pub struct PathSmoothIter<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     result: PathFilterIter<'a, N, E>,
-    pub start: NodeIndex,
-    pub cur: NodeIndex,
+    map: &'a TileMap,
+    start: NodeIndex,
+    start_cr: (isize, isize),
+    cur: NodeIndex,
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathSmoothIter<'a, N, E> {
-    pub fn new(mut result: PathFilterIter<'a, N, E>) -> Self {
+    pub fn new(mut result: PathFilterIter<'a, N, E>, map: &'a TileMap) -> Self {
         let start = result.next().unwrap();
+        let start_cr = column_row(map.column, start);
+
         let cur = if let Some(c) = result.next() {
             c
         } else {
             Null::null()
         };
-        PathSmoothIter {
-            result,
-            start,
-            cur,
+        PathSmoothIter { result, map, start, start_cr, cur }
+    }
+    /// 判断是否地图上直线可达
+    fn test(map: & TileMap, start_cr: (isize, isize), node: NodeIndex) -> bool {
+        let cr = column_row(map.column, node);
+        let it = bresenham(start_cr, cr);
+        let stop = it.0.coord.1;
+        let mut last = 0;
+        if it.1 {
+            for (y, x) in it.0 {
+                if x == stop { // 如果和终点直线连通，则可判断为直线可达
+                    return true
+                }
+            }
+        }else{
+            for (x, y) in it.0 {
+                if y == stop {// 如果和终点直线连通，则可判断为直线可达
+                    return true
+                }
+            }
         }
+        true
     }
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterator
@@ -670,7 +389,7 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
         }
         for node in &mut self.result {
             // 判断该点和起点是否直线可达
-            let ok = true;
+            let ok = Self::test(self.map, self.start_cr, node);
             if !ok {
                 let node = mem::replace(&mut self.cur, node);
                 return Some(mem::replace(&mut self.start, node));
@@ -682,9 +401,9 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
     }
 }
 
-/// 获得指定位置瓦片的行列
-pub fn row_column(column: usize, index: NodeIndex) -> (isize, isize) {
-    ((index.0 / column) as isize, (index.0 % column) as isize)
+/// 获得指定位置瓦片的列行
+pub fn column_row(column: usize, index: NodeIndex) -> (isize, isize) {
+    ((index.0 % column) as isize, (index.0 / column) as isize)
 }
 
 //#![feature(test)]
@@ -693,16 +412,61 @@ mod test_tilemap {
     use crate::*;
     use rand_core::SeedableRng;
     use test::Bencher;
+    #[test]
+    fn test2() {
+        let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+        let mut map = TileMap::new(11, 11, 100, 141);
+        map.nodes[48] = 4;
+        map.nodes[49] = 4;
+        map.nodes[50] = 4;
+        map.nodes[59] = 4;
+        map.nodes[60] = 4;
+        map.nodes[61] = 4;
+        map.nodes[70] = 4;
+        map.nodes[71] = 4;
+        map.nodes[72] = 4;
 
+        let column = map.column;
+
+        let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.column * map.row, 100);
+
+
+        let start = NodeIndex(120);
+        let end = NodeIndex(0);
+
+        let r = astar.find(start, end, 30000, &mut map, make_neighbors);
+        println!("r: {:?}", r);
+
+        let mut c = 0;
+        for r in PathFilterIter::new(astar.result_iter(end), map.column) {
+            println!("x:{},y:{}", r.0 % column, r.0 / column);
+            c += 1;
+        }
+        println!("c:{}", c);
+
+        let start = NodeIndex(0);
+        let end = NodeIndex(120);
+
+        let r = astar.find(start, end, 30000, &mut map, make_neighbors);
+        println!("r: {:?}", r);
+
+        let mut c = 0;
+        for r in PathFilterIter::new(astar.result_iter(end), map.column) {
+            println!("x:{},y:{}", r.0 % column, r.0 / column);
+            c += 1;
+        }
+        println!("c:{}", c);
+
+    }
     #[test]
     fn test3() {
         let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
-        let mut map = TileMap::new(1000, 1000, 100usize);
-        map.nodes[88 + 88 * map.column] = 4;
-        map.nodes[65 + 64 * map.column] = 4;
-        map.nodes[54 + 55 * map.column] = 4;
-        map.nodes[44 + 44 * map.column] = 4;
-        map.nodes[33 + 33 * map.column] = 4;
+        let mut map = TileMap::new(1000, 1000, 100, 141);
+        map.nodes[88 + 88 * map.column] = TileObstacle::Center as u8;
+        map.nodes[65 + 64 * map.column] = TileObstacle::Center as u8;
+        map.nodes[54 + 55 * map.column] = TileObstacle::Center as u8;
+        map.nodes[44 + 44 * map.column] = TileObstacle::Center as u8;
+        map.nodes[33 + 33 * map.column] = TileObstacle::Center as u8;
         let column = map.column;
         let x1 = 999; //rng.next_u32() as usize%map.column;
         let y1 = 999; //rng.next_u32()as usize %map.row;
@@ -722,71 +486,16 @@ mod test_tilemap {
         }
         println!("c:{}", c);
     }
-    #[test]
-    fn test4() {
-        let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
-        let mut map = NormalTileMap::new(1000, 1000, 100usize);
-        map.nodes[88 + 88 * map.column] = true;
-        map.nodes[65 + 64 * map.column] = true;
-        map.nodes[54 + 55 * map.column] = true;
-        map.nodes[44 + 44 * map.column] = true;
-        map.nodes[33 + 33 * map.column] = true;
-        let column = map.column;
-        let x1 = 999; //rng.next_u32() as usize%map.column;
-        let y1 = 999; //rng.next_u32()as usize %map.row;
-        let x2 = 1; //rng.next_u32() as usize%map.column;
-        let y2 = 1; //rng.next_u32()as usize %map.row;
-        println!("x1:{},y1:{}, x2:{},y2:{}", x1, y1, x2, y2);
-        let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.column * map.row, 100);
-        let start = NodeIndex(x1 + y1 * map.column);
-        let end = NodeIndex(x2 + y2 * map.column);
-        let r = astar.find(start, end, 30000, &mut map, make_neighbors);
 
-        println!("r: {:?}", r);
-        let mut c = 0;
-        for r in PathFilterIter::new(astar.result_iter(end), map.column) {
-            println!("x:{},y:{}", r.0 % column, r.0 / column);
-            c += 1;
-        }
-        println!("c:{}", c);
-    }
     #[bench]
     fn bench_test1(b: &mut Bencher) {
         let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
-        let mut map = TileMap::new(100, 100, 100usize);
+        let mut map = TileMap::new(100, 100, 100, 141);
         map.nodes[88 + 88 * map.column] = 4;
         map.nodes[65 + 64 * map.column] = 4;
         map.nodes[54 + 55 * map.column] = 4;
         map.nodes[44 + 44 * map.column] = 4;
         map.nodes[33 + 33 * map.column] = 4;
-
-        let x1 = 99; //rng.next_u32() as usize%map.column;
-        let y1 = 99; //rng.next_u32()as usize %map.row;
-        let x2 = 1; //rng.next_u32() as usize%map.column;
-        let y2 = 1; //rng.next_u32()as usize %map.row;
-                    //println!("x1:{},y1:{}, x2:{},y2:{}", x1, y1, x2, y2);
-        let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.column * map.row, 100);
-        b.iter(move || {
-            let start = NodeIndex(x1 + y1 * map.column);
-            let end = NodeIndex(x2 + y2 * map.column);
-            let r = astar.find(start, end, 30000, &mut map, make_neighbors);
-            let mut vec: Vec<NodeIndex> = Vec::with_capacity(100);
-            for r in PathFilterIter::new(astar.result_iter(end), map.column) {
-                vec.push(r);
-                // println!("x:{},y:{}", r.0%map.column, r.0/map.column);
-            }
-        });
-    }
-
-    #[bench]
-    fn bench_test(b: &mut Bencher) {
-        let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
-        let mut map = NormalTileMap::new(100, 100, 100usize);
-        map.nodes[88 + 88 * map.column] = true;
-        map.nodes[65 + 64 * map.column] = true;
-        map.nodes[54 + 55 * map.column] = true;
-        map.nodes[44 + 44 * map.column] = true;
-        map.nodes[33 + 33 * map.column] = true;
 
         let x1 = 99; //rng.next_u32() as usize%map.column;
         let y1 = 99; //rng.next_u32()as usize %map.row;

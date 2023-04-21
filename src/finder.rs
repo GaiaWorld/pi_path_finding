@@ -71,6 +71,7 @@ pub trait NodeEntry<N: PartialOrd + Zero + Copy + Debug> {
     fn h(&self) -> N;
     fn state(&self) -> NodeState;
     fn parent(&self) -> NodeIndex;
+    fn clear(&mut self, version: usize);
 }
 
 // A*搜索器， 记录每个节点的搜索过程中的信息
@@ -139,6 +140,7 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
         self.from_open.clear();
         self.finder.neighbors.clear();
         self.finder.version += 1;
+        self.finder.nodes[start.0].clear(self.finder.version);
         // 创建起点的节点邻居
         let mut nn = make_neighbors(arg, start, end, &mut self.finder);
         loop {

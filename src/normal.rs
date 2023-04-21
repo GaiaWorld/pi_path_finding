@@ -58,6 +58,13 @@ impl<N: PartialOrd + Zero + Copy + Debug> NodeEntry<N> for Entry<N> {
     fn parent(&self) -> NodeIndex {
         self.parent
     }
+    fn clear(&mut self, version: usize) {
+        self.g = N::zero();
+        self.h= N::zero();
+        self.version = version;
+        self.parent= NodeIndex(usize::MAX);
+        self.state = NodeState::None;
+    }
 }
 
 /// 创建节点邻居的函数

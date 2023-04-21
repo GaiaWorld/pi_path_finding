@@ -15,9 +15,11 @@ mod nav_mesh;
 mod normal;
 mod tile_map;
 mod angle;
+mod bresenham;
 
 pub use finder::*;
 pub use normal::*;
 pub use tile_map::*;
 pub use nav_mesh::*;
 pub use angle::*;
+pub use bresenham::*;
