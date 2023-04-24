@@ -1,49 +1,57 @@
 //!
 //! Bresenham直线算法
 //!
+use std::mem::*;
 
-pub fn bresenham(start: (isize, isize), end: (isize, isize)) -> (Iter, bool) {
-    let x = end.0 - start.0;
-    let y = end.1 - start.1;
-    if x.abs() >= y.abs() {
-        (Iter::new((x, y)), false)
-    }else {
-        (Iter::new((y, x)), true)
-    }
-}
+
 #[derive(Debug, Clone, Default)]
-pub struct Iter {
-    // xy坐标
-    pub coord: (isize, isize),
+pub struct Bresenham {
+    // 开始坐标
+    pub start: (isize, isize),
+    // 结束坐标
+    pub end: (isize, isize),
     // 斜率
     pub steep: (isize, f32),
-    // 步数
-    pub cur: (isize, f32),
+    // 小步数
+    pub float: f32,
+    // 是否坐标交换（斜率在45-135度之间）
+    pub xy_change: bool,
 }
-impl Iter {
-    fn new(coord: (isize, isize)) -> Self {
-        let e = if coord.1 >= 0 {
-            f32::EPSILON
-        } else {
-            -f32::EPSILON
+impl Bresenham {
+    pub fn new(mut start: (isize, isize), mut end: (isize, isize)) -> Self {
+        let xy_change = if (end.0 - start.0).abs() >= (end.1 - start.1).abs() {
+            false
+        }else {
+            swap(&mut start.0, &mut start.1);
+            swap(&mut end.0, &mut end.1);
+            true
         };
-        let f = coord.1 as f32 / coord.0.abs() as f32 + e;
-        let steep = (if coord.0 >= 0 { 1 } else { -1 }, f);
-        Iter {
-            coord,
+        let f = if end.0 == start.0 {
+            0.0f32
+        } else if end.1 > start.1 {
+            (end.1 - start.1) as f32 / (end.0 - start.0).abs() as f32 + f32::EPSILON
+        } else if end.1 < start.1 {
+            (end.1 - start.1) as f32 / (end.0 - start.0).abs() as f32 - f32::EPSILON
+        }else{
+            0.0f32
+        };
+        let steep = (if end.0 > start.0 { 1 } else { -1 }, f);
+        Bresenham {
+            start,
+            end,
             steep,
-            cur: (0, 0.0f32),
+            float: start.1 as f32,
+            xy_change,
         }
     }
-}
-impl Iterator for Iter {
-    type Item = (isize, isize);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cur.0 == self.coord.0 {
-            return None;
-        }
-        self.cur.0 += self.steep.0;
-        self.cur.1 += self.steep.1;
-        Some((self.cur.0, self.cur.1 as isize))
+    pub fn is_over(&self) -> bool {
+        self.start.0 == self.end.0
+    }
+    pub fn step(&mut self) {
+        self.start.0 += self.steep.0;
+        self.float += self.steep.1;
+        self.start.1 = self.float as isize;
+
     }
 }
+

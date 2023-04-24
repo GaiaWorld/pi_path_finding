@@ -341,6 +341,7 @@ pub struct PathSmoothIter<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<
     start: NodeIndex,
     start_cr: (isize, isize),
     cur: NodeIndex,
+    cur_cr: (isize, isize),
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathSmoothIter<'a, N, E> {
     pub fn new(mut result: PathFilterIter<'a, N, E>, map: &'a TileMap) -> Self {
@@ -352,28 +353,8 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathSmo
         } else {
             Null::null()
         };
-        PathSmoothIter { result, map, start, start_cr, cur }
-    }
-    /// 判断是否地图上直线可达
-    fn test(map: & TileMap, start_cr: (isize, isize), node: NodeIndex) -> bool {
-        let cr = column_row(map.column, node);
-        let it = bresenham(start_cr, cr);
-        let stop = it.0.coord.1;
-        let mut last = 0;
-        if it.1 {
-            for (y, x) in it.0 {
-                if x == stop { // 如果和终点直线连通，则可判断为直线可达
-                    return true
-                }
-            }
-        }else{
-            for (x, y) in it.0 {
-                if y == stop {// 如果和终点直线连通，则可判断为直线可达
-                    return true
-                }
-            }
-        }
-        true
+        let cur_cr = column_row(map.column, cur);
+        PathSmoothIter { result, map, start, start_cr, cur, cur_cr }
     }
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterator
@@ -388,17 +369,167 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
             return Some(mem::replace(&mut self.start, Null::null()));
         }
         for node in &mut self.result {
+            let node_cr = column_row(self.map.column, node);
             // 判断该点和起点是否直线可达
-            let ok = Self::test(self.map, self.start_cr, node);
-            if !ok {
+            if !test_line(self.map, node_cr, self.start_cr, ) {
+                self.start_cr = self.cur_cr;
+                self.cur_cr = node_cr;
                 let node = mem::replace(&mut self.cur, node);
                 return Some(mem::replace(&mut self.start, node));
             }
             self.cur = node;
+            self.cur_cr = node_cr;
         }
         let node = mem::replace(&mut self.cur, Null::null());
         Some(mem::replace(&mut self.start, node))
     }
+}
+/// 判断是否地图上直线可达
+pub fn test_line(map: & TileMap, start: (isize, isize), end: (isize, isize)) -> bool {
+    // println!("test_line, start:{:?} end:{:?}", start, end);
+    let b = Bresenham::new(start, end);
+    if b.xy_change {
+        if end.0 > start.0 { 
+            if end.1 > start.1 {
+                // 第1象限45-90度内
+                test_line_yx1(map, b, map.column as isize, -(map.column as isize))
+            }else{
+                // 第2象限90-135度内
+                test_line_yx2(map, b, map.column as isize, -(map.column as isize))
+            }
+        }else if end.1 > start.1 {
+            // 第4象限270-315度内
+            test_line_yx1(map, b, 0, map.column as isize)
+        }else{
+            // 第3象限225-270度内
+            test_line_yx2(map, b, 0, map.column as isize)
+        }
+    }else{
+        if end.0 > start.0 { 
+            if end.1 > start.1 { // 第1象限0-45度内
+                test_line_xy1(map, b, 0, -1)
+            }else{ // 第4象限315-360度内
+                test_line_xy2(map, b, 0, -1)
+            }
+        }else if end.1 > start.1 {
+            // 第2象限135-180度内
+            test_line_xy1(map, b, -1, 1)
+        }else{// 第3象限180-225度内
+            test_line_xy2(map, b, -1, 1)
+        }
+    }
+    
+}
+
+/// 第1象限45-90度内和第4象限270-315度内，判断是否地图上直线可达
+pub fn test_line_yx1(map: & TileMap, mut b: Bresenham, fix: isize, oblique: isize) -> bool {
+    let mut last = b.start.1;
+    while b.start.0 != b.end.0 && b.start.1 != b.end.1 {// 如果和终点直线连通，则可判断为直线可达
+        let index = b.start.1 + fix + b.start.0 * (map.column as isize);
+        let (center, _right, down) = get_obstacle(&map.nodes, index as usize);
+        if center || down {// 自身、右边或下边不可走，则返回不可达
+            return false
+        }
+        if b.start.1 != last { // 为斜线
+            // 从左方拐角的点
+            let (center, right, down) = get_obstacle(&map.nodes, (index + oblique) as usize);
+            if center || right || down {// 自身、右边或下边不可走，则返回不可达
+                return false
+            }
+            last = b.start.1;
+        }
+        b.step();
+    }
+    true
+}
+/// 第2象限90-135度内和第3象限225-270度内，判断是否地图上直线可达
+pub fn test_line_yx2(map: & TileMap, mut b: Bresenham, fix: isize, oblique: isize) -> bool {
+    let mut last = b.start.1;
+    while b.start.0 != b.end.0 && b.start.1 != b.end.1 {// 如果和终点直线连通，则可判断为直线可达
+        let index = b.start.1 + fix + b.start.0 * (map.column as isize);
+        if b.start.1 != last { // 为斜线
+            let (center, right, down) = get_obstacle(&map.nodes, index as usize);
+            if center || right || down {// 自身、右边或下边不可走，则返回不可达
+                return false
+            }
+            // 从右方拐角的点
+            let (center, _right, down) = get_obstacle(&map.nodes, (index + oblique) as usize);
+            if center || down {// 自身或下方不可走，则返回不可达
+                return false
+            }
+            last = b.start.1;
+        }else{
+            let (center, _right, down) = get_obstacle(&map.nodes, index as usize);
+            if center || down {// 自身或下边不可走，则返回不可达
+                return false
+            }
+        }
+        b.step();
+    }
+    true
+}
+
+/// 第1象限0-45度内和第2象限135-180度内，判断是否地图上直线可达
+pub fn test_line_xy1(map: & TileMap, mut b: Bresenham, fix: isize, oblique: isize) -> bool {
+    // println!("test_line_xy1 : start: {:?} end: {:?}", b.start, b.end);
+    // let bb = if b.start.0==1 && b.start.1==1 && b.end.0==45&&b.end.1==44 {
+    //     true
+    // }else{false};
+    let mut last = b.start.1;
+    while b.start.0 != b.end.0 && b.start.1 != b.end.1 {// 如果和终点直线连通，则可判断为直线可达
+        let index = b.start.0 + fix + b.start.1 * (map.column as isize);
+        //if bb {println!("test_line_xy1 0: {:?}", (b.start.0 + fix, b.start.1));}
+        if b.start.1 != last { // 为斜线
+            let (center, right, down) = get_obstacle(&map.nodes, index as usize);
+            if center || right || down {// 自身、下边或右边不可走，则返回不可达
+                //if bb {println!("test_line_xy1 1: {}", index);}
+                return false
+            }
+            // 从下方拐角的点
+            let (center, _right, _down) = get_obstacle(&map.nodes, (index + oblique) as usize);
+            if center {// 自身不可走，则返回不可达
+                //if bb {println!("test_line_xy1 2: {}", index);}
+                return false
+            }
+            last = b.start.1;
+        }else{
+            let (center, right, _down) = get_obstacle(&map.nodes, index as usize);
+            if center || right {// 自身或右边不可走，则返回不可达
+                //if bb {println!("test_line_xy1 3: {}", index);}
+                return false
+            }
+        }
+        b.step();
+    }
+    true
+}
+/// 第4象限315-360度内和第3象限180-225度内，判断是否地图上直线可达
+pub fn test_line_xy2(map: & TileMap, mut b: Bresenham, fix: isize, oblique: isize) -> bool {
+    // println!("test_line_xy2 : start: {:?} end: {:?}", b.start, b.end);
+    // let bb = if b.end.0==1 && b.end.1==1 && b.start.0==45&&b.start.1==44 {
+    //     true
+    // }else{false};
+    let mut last = b.start.1;
+    while b.start.0 != b.end.0 && b.start.1 != b.end.1 {// 如果和终点直线连通，则可判断为直线可达
+        let index = b.start.0 + fix + b.start.1 * (map.column as isize);
+        //if bb {println!("test_line_xy2 0: {:?}", (b.start.0 + fix, b.start.1));}
+        let (center, right, _down) = get_obstacle(&map.nodes, index as usize);
+        if center || right {// 自身、右边不可走，则返回不可达
+            //if bb {println!("test_line_xy2 1: {}", index);}
+            return false
+        }
+        if b.start.1 != last { // 为斜线
+            // 从上方拐角的点
+            let (center, _right, down) = get_obstacle(&map.nodes, (index + oblique) as usize);
+            if center || down {// 自身或下方不可走，则返回不可达
+                //if bb {println!("test_line_xy2 2: {}", index);}
+                return false
+            }
+            last = b.start.1;
+        }
+        b.step();
+    }
+    true
 }
 
 /// 获得指定位置瓦片的列行
@@ -430,7 +561,6 @@ mod test_tilemap {
 
         let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.column * map.row, 100);
 
-
         let start = NodeIndex(120);
         let end = NodeIndex(0);
 
@@ -452,6 +582,13 @@ mod test_tilemap {
 
         let mut c = 0;
         for r in PathFilterIter::new(astar.result_iter(end), map.column) {
+            println!("x:{},y:{}", r.0 % column, r.0 / column);
+            c += 1;
+        }
+        println!("c:{}", c);
+        c = 0;
+        let f = PathFilterIter::new(astar.result_iter(end), map.column);
+        for r in PathSmoothIter::new(f, &map) {
             println!("x:{},y:{}", r.0 % column, r.0 / column);
             c += 1;
         }
@@ -485,6 +622,14 @@ mod test_tilemap {
             c += 1;
         }
         println!("c:{}", c);
+        c = 0;
+        let f = PathFilterIter::new(astar.result_iter(end), map.column);
+        
+        for r in PathSmoothIter::new(f, &map) {
+            println!("x:{},y:{}", r.0 % column, r.0 / column);
+            c += 1;
+        }
+        println!("c:{}", c);
     }
 
     #[bench]
@@ -508,7 +653,9 @@ mod test_tilemap {
             let end = NodeIndex(x2 + y2 * map.column);
             let r = astar.find(start, end, 30000, &mut map, make_neighbors);
             let mut vec: Vec<NodeIndex> = Vec::with_capacity(100);
-            for r in PathFilterIter::new(astar.result_iter(end), map.column) {
+            let f = PathFilterIter::new(astar.result_iter(end), map.column);
+        
+            for r in PathSmoothIter::new(f, &map) {
                 vec.push(r);
                 // println!("x:{},y:{}", r.0%map.column, r.0/map.column);
             }
