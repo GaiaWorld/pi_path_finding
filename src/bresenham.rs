@@ -3,13 +3,15 @@
 //!
 use std::mem::*;
 
+use crate::Point;
+
 
 #[derive(Debug, Clone, Default)]
 pub struct Bresenham {
     // 开始坐标
-    pub start: (isize, isize),
+    pub start: Point,
     // 结束坐标
-    pub end: (isize, isize),
+    pub end: Point,
     // 斜率
     pub steep: (isize, f32),
     // 小步数
@@ -18,40 +20,39 @@ pub struct Bresenham {
     pub xy_change: bool,
 }
 impl Bresenham {
-    pub fn new(mut start: (isize, isize), mut end: (isize, isize)) -> Self {
-        let xy_change = if (end.0 - start.0).abs() >= (end.1 - start.1).abs() {
+    pub fn new(mut start: Point, mut end: Point) -> Self {
+        let xy_change = if (end.x - start.x).abs() >= (end.y - start.y).abs() {
             false
         }else {
-            swap(&mut start.0, &mut start.1);
-            swap(&mut end.0, &mut end.1);
+            swap(&mut start.x, &mut start.y);
+            swap(&mut end.x, &mut end.y);
             true
         };
-        let f = if end.0 == start.0 {
+        let f = if end.x == start.x {
             0.0f32
-        } else if end.1 > start.1 {
-            (end.1 - start.1) as f32 / (end.0 - start.0).abs() as f32 + f32::EPSILON
-        } else if end.1 < start.1 {
-            (end.1 - start.1) as f32 / (end.0 - start.0).abs() as f32 - f32::EPSILON
+        } else if end.y > start.y {
+            (end.y - start.y) as f32 / (end.x - start.x).abs() as f32 + f32::EPSILON
+        } else if end.y < start.y {
+            (end.y - start.y) as f32 / (end.x - start.x).abs() as f32 - f32::EPSILON
         }else{
             0.0f32
         };
-        let steep = (if end.0 > start.0 { 1 } else { -1 }, f);
+        let steep = (if end.x > start.x { 1 } else { -1 }, f);
         Bresenham {
             start,
             end,
             steep,
-            float: start.1 as f32,
+            float: start.y as f32,
             xy_change,
         }
     }
     pub fn is_over(&self) -> bool {
-        self.start.0 == self.end.0
+        self.start.x == self.end.x
     }
     pub fn step(&mut self) {
-        self.start.0 += self.steep.0;
+        self.start.x += self.steep.0;
         self.float += self.steep.1;
-        self.start.1 = self.float as isize;
-
+        self.start.y = self.float as isize;
     }
 }
 
