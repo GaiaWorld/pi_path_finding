@@ -20,7 +20,7 @@ num-derive = "0.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
-pi_orca = {path = "../pi_orca"}
+pi_orca = {git = "https://github.com/GaiaWorld/pi_orca.git" }
 
 [dev-dependencies]
 raqote = "0.8"
