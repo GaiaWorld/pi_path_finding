@@ -6,7 +6,7 @@
 //! 如果使用PathSmoothIter来平滑路径，则斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
 //!
 
-use crate::*;
+use crate::{*, finder::{NodeIndex, NodeEntry, ResultIterator}, angle::{Point, Angle}, bresenham::Bresenham, normal::Map};
 use num_traits::Zero;
 use pi_null::Null;
 use pi_spatial::tilemap::*;
@@ -547,7 +547,7 @@ pub fn get_xy(column: usize, index: NodeIndex) -> Point {
 //#![feature(test)]
 #[cfg(test)]
 mod test_tilemap {
-    use crate::*;
+    use crate::{*, normal::{make_neighbors, Entry}, finder::{NodeIndex, AStar}, tile_map::{TileMap, PathFilterIter, PathSmoothIter, TileObstacle}};
     use rand_core::SeedableRng;
     use test::Bencher;
     #[test]
@@ -594,7 +594,7 @@ mod test_tilemap {
         }
         println!("c:{}", c);
         c = 0;
-        let f = PathFilterIter::new(astar.result_iter(end), map.column);
+        let f: PathFilterIter<usize, Entry<usize>> = PathFilterIter::new(astar.result_iter(end), map.column);
         for r in PathSmoothIter::new(f, &map) {
             println!("x:{},y:{}", r.0 % column, r.0 / column);
             c += 1;

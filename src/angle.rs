@@ -103,7 +103,7 @@ impl PartialOrd for Angle {
 //#![feature(test)]
 #[cfg(test)]
 mod test_angle {
-    use crate::*;
+    use crate::{angle::{Angle, Point}};
 
     #[test]
     fn test() {

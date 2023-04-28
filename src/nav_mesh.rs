@@ -2,9 +2,11 @@
 //! 导航网格 的 A* 寻路
 //!
 
-use crate::*;
+// use crate::*;
 use nalgebra::{Point3, RealField, Vector3};
 use std::{collections::HashMap, fmt::Debug};
+
+use crate::{finder::{AStar, NodeIndex, AStarResult}, normal::{Entry, make_neighbors, Map}};
 
 // 在 某个 多边形 点列表 的 索引
 #[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -596,8 +598,10 @@ impl<N: Copy + RealField + Debug> AABB<N> {
 
 #[cfg(test)]
 mod navmesh_astar {
-    use super::SegmentIndex;
-    use crate::{NavMeshMap, AStar};
+    use crate::finder::AStar;
+
+    use super::{SegmentIndex, NavMeshMap};
+    // use crate::{NavMeshMap, AStar};
     use nalgebra::Point3;
     use raqote::*;
 

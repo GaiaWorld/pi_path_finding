@@ -10,16 +10,11 @@
 #![feature(test)]
 extern crate test;
 
-mod finder;
-mod nav_mesh;
-mod normal;
-mod tile_map;
-mod angle;
-mod bresenham;
 
-pub use finder::*;
-pub use normal::*;
-pub use tile_map::*;
-pub use nav_mesh::*;
-pub use angle::*;
-pub use bresenham::*;
+pub mod finder;
+pub mod normal;
+pub mod tile_map;
+pub mod nav_mesh;
+pub mod angle;
+pub mod bresenham;
+pub mod web;
