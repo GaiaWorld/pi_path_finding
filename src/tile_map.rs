@@ -3,6 +3,7 @@
 //! 需指定行数和列数，每个瓦片的边长和斜角长度，默认为100和141。
 //! 瓦片信息包括3个信息：瓦片是否障碍， 右边是否障碍，下边是否障碍。这些是从左到右，从上到下地进行排序的。一个矩阵表示的地图也称为瓦片地图。
 //! 获得邻居时， 如果斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
+//! 如果使用PathSmoothIter来平滑路径，则斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
 //!
 
 use crate::*;
@@ -71,6 +72,9 @@ impl TileMap {
             oblique_len,
             count: row * column,
         }
+    }
+    pub fn get_node_obstacle(&mut self, node: NodeIndex) -> u8 {
+        self.nodes[node.0]
     }
     pub fn set_node_obstacle(&mut self, node: NodeIndex, tile_obstacle: u8) {
         self.nodes[node.0] = tile_obstacle;
