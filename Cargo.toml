@@ -1,6 +1,6 @@
 [package]
 name = "pi_path_finding"
-version = "0.3.6"
+version = "0.3.7"
 authors = ["baip <baip@gmail.com>"]
 edition = "2021"
 description = "A* Path Finding Algorithm"
