@@ -20,6 +20,7 @@ pub enum TileObstacle {
     Right = 1,
     Down = 2,
     Center = 4,
+    None = 0,
 }
 
 #[wasm_bindgen]
@@ -71,6 +72,7 @@ impl TileMap {
             TileObstacle::Right => 1,
             TileObstacle::Down => 2,
             TileObstacle::Center => 4,
+            TileObstacle::None => 0,
         };
 
         self.inner.set_node_obstacle(index.inner, pos_type);
