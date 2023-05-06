@@ -17,6 +17,18 @@ impl Point {
     pub fn new(x: isize, y: isize) -> Self {
         Point { x, y}
     }
+    // 加法
+    pub fn add(&self, other: isize) -> Self {
+        Point::new(self.x + other, self.y - other)
+    }
+    // 乘法
+    pub fn mul(&self, other: isize) -> Self {
+        Point::new(self.x * other, self.y * other)
+    }
+    // 除法
+    pub fn div(&self, other: isize) -> Self {
+        Point::new(self.x / other, self.y / other)
+    }
 }
 // 实现 Add trait，定义加法操作
 impl std::ops::Add for Point {
@@ -34,6 +46,53 @@ impl std::ops::Sub for Point {
     fn sub(self, other: Point) -> Point {
         Point::new(self.x - other.x, self.y - other.y)
     }
+}
+impl Null for Point {
+    fn null() -> Self {
+        Point::new(Null::null(), Null::null())
+    }
+    fn is_null(&self) -> bool {
+        self.x.is_null() || self.y.is_null()
+    }
+}
+
+pub struct Aabb {
+    pub min: Point,
+    pub max: Point,
+}
+impl Aabb{
+    pub fn new(min: Point, max: Point) -> Self {
+        Aabb{min, max}
+    }
+    // 用指定的点来扩大Aabb
+    pub fn extend(&mut self, point: Point) {
+        if point.x < self.min.x {
+            self.min.x = point.x;
+        }else if point.x > self.max.x {
+            self.max.x = point.x;
+        }
+        if point.y < self.min.y  {
+            self.min.y = point.y;
+        }else if point.y > self.max.y {
+            self.max.y = point.y;
+        }
+    }
+    // 判断点是否在矩形内
+    pub fn contains(&self, point: Point)-> bool {
+        point.x >= self.min.x &&
+        point.x < self.max.x &&
+        point.y >= self.min.y &&
+        point.y < self.max.y
+    }
+  
+    // 判断矩形是否与另一个矩形相交
+    pub fn intersects(&self, other: Aabb) -> bool {
+        self.min.x < other.max.x &&
+        self.max.x > other.min.x &&
+        self.min.y < other.max.y &&
+        self.max.y > other.min.y
+    }
+    
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -79,10 +138,10 @@ impl Angle {
 }
 impl Null for Angle {
     fn null() -> Self {
-        Default::default()
+        Angle { p: Null::null(), quadrant: 0 }
     }
     fn is_null(&self) -> bool {
-        self.p.x == 0 && self.p.y == 0
+        self.p.is_null()
     }
 }
 impl PartialEq for Angle {
@@ -104,7 +163,40 @@ impl PartialOrd for Angle {
 #[cfg(test)]
 mod test_angle {
     use crate::*;
+    use bitvec::prelude::*;
+    use test::Bencher;
 
+    fn find_n_zeros(bits: &BitSlice, n: usize) -> Option<usize> {
+        let mut count = 0;
+        for (i, bit) in bits.iter().enumerate() {
+            if *bit {
+                if count > 0 {
+                    count = 0;
+                };
+            } else {
+                count += 1;
+                if count == n {
+                    return Some(i + 1 - count);
+                }
+            }
+        }
+        None
+    }
+    #[test]
+    fn test1() {
+        let data = [2, usize::MAX, 8, 12, 16, 20, 24, 28];
+        let bits = data.view_bits::<Lsb0>();
+        println!("{:?}", find_n_zeros(bits, 4));
+    }
+    #[bench]
+    fn bench_test1(b: &mut Bencher) {
+        let data = [1023, usize::MAX, usize::MAX, usize::MAX, usize::MAX, usize::MAX, usize::MAX, 28];
+        let bits = data.view_bits::<Lsb0>();        //let index = None;
+        b.iter(move || {
+            u32::MAX.leading_zeros()
+        });
+        println!("{:?}", bits)
+    }
     #[test]
     fn test() {
         let a21 = Angle::new(Point::new(2, 1));

@@ -327,7 +327,7 @@ impl<N: PartialOrd + Zero + Copy + Debug> Ord for FNode<N> {
 /// + 实际使用的时候就是数字类型，比如：i8/u8/i32/u32/f32/f64；
 pub struct DualAStar<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     // 从from搜to的AStar
-    astar: AStar<N, E>,
+    pub astar: AStar<N, E>,
     // 从to搜from的Open表，最小堆
-    to_open: BinaryHeap<NodeNeighbors<N>>,
+    pub to_open: BinaryHeap<NodeNeighbors<N>>,
 }
