@@ -6,7 +6,7 @@ use std::cmp::*;
 
 use pi_null::Null;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Point {
     // x坐标
     pub x: isize,
@@ -19,7 +19,7 @@ impl Point {
     }
     // 加法
     pub fn add(&self, other: isize) -> Self {
-        Point::new(self.x + other, self.y - other)
+        Point::new(self.x + other, self.y + other)
     }
     // 乘法
     pub fn mul(&self, other: isize) -> Self {
@@ -56,6 +56,7 @@ impl Null for Point {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Aabb {
     pub min: Point,
     pub max: Point,
@@ -162,7 +163,7 @@ impl PartialOrd for Angle {
 //#![feature(test)]
 #[cfg(test)]
 mod test_angle {
-    use crate::*;
+    use crate::{*, base::{Point, Angle}};
     use bitvec::prelude::*;
     use test::Bencher;
 

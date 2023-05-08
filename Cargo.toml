@@ -1,12 +1,15 @@
 [package]
 name = "pi_path_finding"
-version = "0.3.5"
+version = "0.3.7"
 authors = ["baip <baip@gmail.com>"]
 edition = "2021"
 description = "A* Path Finding Algorithm"
 repository = "https://github.com/GaiaWorld/pi_path_finding"
 license = "MIT OR Apache-2.0"
 keywords = ["pi", "PathFinding", "AStar"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
 pi_null = "0.1"
@@ -15,8 +18,11 @@ num-traits = "0.2"
 num-derive = "0.3"
 bitvec="1.0"
 
-[dev-dependencies]
+#[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+pi_orca = "0.3"
 
+[dev-dependencies]
 raqote = "0.8"
 pcg_rand = "0.13"
 rand_core = "0.6"

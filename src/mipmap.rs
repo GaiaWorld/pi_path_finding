@@ -6,7 +6,7 @@ use bitvec::prelude::*;
 use pi_null::Null;
 use std::mem::{transmute, MaybeUninit};
 
-use crate::{Aabb, NodeIndex, Point};
+use crate::{base::Aabb, finder::NodeIndex, base::Point};
 
 // 四方向枚举
 #[repr(C)]
@@ -17,7 +17,18 @@ pub enum Location {
     DownLeft = 2,
     DownRight = 3,
 }
-
+/// 按到P点的距离从近到远进行排序
+pub fn sort_by_dist(p: Point, vec: &mut Vec<Point>) {
+    vec.sort_by(|a, b| {
+        let x = a.x - p.x;
+        let y = a.y - p.y;
+        let dist_a = x * x + y * y;
+        let x = b.x - p.x;
+        let y = b.y - p.y;
+        let dist_b = x * x + y * y;
+        dist_a.cmp(&dist_b)
+    });
+}
 /// 获得指定位置瓦片及方向的包含自身及周围的四个瓦片坐标，第一个坐标一定是min_xy，最后一个坐标是max_xy，顺序遵循0(左上) 1(右上) 2(左下) 3(右下)
 pub fn get_round(p: Point, d: Location, width: isize, height: isize) -> ([Point; 4], usize) {
     // 创建一个长度为 4 的未初始化的数组
@@ -114,35 +125,31 @@ pub struct MipMap {
 impl MipMap {
     pub fn new(width: usize, height: usize) -> Self {
         let amount = width * height;
-        // 0级用bit位存储，为长度除8，1-5级用byte字节存储，为长度除1/4+1/9+1/16+1/36+1/64,
-        let len = amount.div_ceil(8)
-            + amount.div_ceil(RESOLUTIONS_2[0])
-            + amount.div_ceil(RESOLUTIONS_2[1])
-            + amount.div_ceil(RESOLUTIONS_2[2])
-            + amount.div_ceil(RESOLUTIONS_2[3])
-            + amount.div_ceil(RESOLUTIONS_2[4]);
-        let mut nodes = Vec::with_capacity(len);
-        nodes.resize_with(len, Default::default);
-        let mut maps = [Map::default(); 5];
-        let mut offset = amount.div_ceil(8);
-        for i in 0..RESOLUTIONS.len() {
-            let r = RESOLUTIONS[i];
-            let w = width.div_ceil(r);
-            let h = height.div_ceil(r);
-            maps[i].offset = offset;
-            maps[i].resolution = r;
-            maps[i].limit = r * r;
-            maps[i].width = w;
-            maps[i].height = h;
-            offset += w * h;
-        }
-        MipMap {
-            nodes,
+        let mut mipmap = MipMap {
+            nodes: Vec::new(),
             width,
             height,
             amount,
-            maps,
+            maps: [Map::default(); 5],
+        };
+        // 0级用bit位存储，为长度除8，1-5级用byte字节存储
+        let mut len = amount.div_ceil(8);
+        let mut i: usize = 0;
+        for map in &mut mipmap.maps {
+            let r = RESOLUTIONS[i];
+            i+=1;
+            let w = width.div_ceil(r);
+            let h = height.div_ceil(r);
+            map.offset = len;
+            map.resolution = r;
+            map.limit = r * r;
+            map.width = w;
+            map.height = h;
+            len += w * h;
         }
+        mipmap.nodes.resize_with(len, Default::default);
+        mipmap
+
     }
     // 判断一个点是否被设置
     #[inline]
@@ -198,10 +205,10 @@ impl MipMap {
             return false;
         }
         let bits = self.nodes.view_bits_mut::<Lsb0>();
-        if bits[src.0] {
+        if !bits[src.0] {
             return false;
         }
-        if !bits[dest.0] {
+        if bits[dest.0] {
             return false;
         }
         bits.set(src.0, false);
@@ -253,8 +260,10 @@ impl MipMap {
             if r.1 == 0 {
                 continue;
             }
-            r.0.min.mul(m.resolution as isize);
-            r.0.max.mul(m.resolution as isize);
+            r.0.min.x *= m.resolution as isize;
+            r.0.min.y *= m.resolution as isize;
+            r.0.max.x *= m.resolution as isize;
+            r.0.max.y *= m.resolution as isize;
             if r.0.max.x > self.width as isize {
                 r.0.max.x = self.width as isize; // truncate it to the width of the map. this is a bit of a hack.
             }
@@ -266,16 +275,17 @@ impl MipMap {
         (Aabb::new(p, p), 0)
     }
     // 获得指定范围所有可用的点
-    pub fn get_list(&self, aabb: Aabb, result: &mut Vec<NodeIndex>) {
+    pub fn get_list(&self, aabb: Aabb, result: &mut Vec<Point>) {
         let bits = self.nodes.view_bits::<Lsb0>();
-        for i in aabb.min.y..aabb.max.y {
-            let iw = i as usize * self.width;
-            for j in aabb.min.x..aabb.max.x {
-                let id = j as usize + iw;
+        let mut i = 0;
+        for y in aabb.min.y..aabb.max.y {
+            for x in aabb.min.x..aabb.max.x {
+                let id = x as usize + i;
                 if !bits[id] {
-                    result.push(NodeIndex(id));
+                    result.push(Point::new(x, y));
                 }
             }
+            i += self.width;
         }
     }
 }
@@ -344,7 +354,8 @@ impl Map {
 //#![feature(test)]
 #[cfg(test)]
 mod test_mipmap {
-    use crate::*;
+    use crate::{*, mipmap::MipMap, finder::NodeIndex, tile_map::Direction, base::Aabb, base::Point};
+    use std::mem::transmute;
     //use rand_core::SeedableRng;
     use test::Bencher;
     #[test]
@@ -360,9 +371,19 @@ mod test_mipmap {
         map.set_true(NodeIndex(70));
         map.set_true(NodeIndex(71));
         map.set_true(NodeIndex(72));
+        assert!(map.move_to(NodeIndex(72), NodeIndex(73)));
 
+        assert_eq!(map.is_true(NodeIndex(49)), true );
+        assert_eq!(map.is_true(NodeIndex(4)), false );
+        assert_eq!(map.is_true(NodeIndex(72)), false );
+        assert_eq!(map.is_true(NodeIndex(73)), true );
+        let r = map.find_round(NodeIndex(0), unsafe{transmute(1)}, 2);
+        assert_eq!(r.0, Aabb::new(Point::new(0,0), Point::new(2,1)));
+        let r = map.find_round(NodeIndex(0), unsafe{transmute(0)}, 2);
+        assert_eq!(r.0, Aabb::new(Point::new(0,0), Point::new(2,2)));
+        let r = map.find_round(NodeIndex(47), unsafe{transmute(0)}, 36);
+        println!("aabb:{:?}", r);
 
-        println!("c:{}", 1);
 
     }
 }

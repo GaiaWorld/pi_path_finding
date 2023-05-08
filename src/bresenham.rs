@@ -3,7 +3,9 @@
 //!
 use std::mem::*;
 
-use crate::Point;
+use crate::base::Point;
+
+// use crate::Point;
 
 
 #[derive(Debug, Clone, Default)]

@@ -6,7 +6,7 @@
 //! 如果使用PathSmoothIter来平滑路径，则斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
 //!
 
-use crate::*;
+use crate::{*, finder::{NodeIndex, NodeEntry, ResultIterator}, normal::Map, base::{Point, Angle}, bresenham::Bresenham};
 use num_traits::Zero;
 use pi_null::Null;
 use std::{fmt::Debug, mem};
@@ -174,9 +174,9 @@ pub struct TileMap {
 
 impl TileMap {
     ///
-    /// 新建一个方格图
+    /// 新建一个瓦片地图
     ///
-    /// 需指定方格图的行数和列数，每个方格的边长，以及全图在场景中的起始坐标
+    /// 需指定瓦片地图的宽度和高度，每个瓦片的边长和斜变长
     pub fn new(width: usize, height: usize, cell_len: usize, oblique_len: usize) -> Self {
         let amount = height * width;
         let mut nodes = Vec::with_capacity(amount);
@@ -396,9 +396,8 @@ pub struct PathFilterIter<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<
     result: ResultIterator<'a, N, E>,
     // 地图的列
     pub width: usize,
-    pub start: NodeIndex,
-    pub cur: NodeIndex,
-    pub cur_p: Point,
+    pub start: Point,
+    pub cur: Point,
     angle: Angle,
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathFilterIter<'a, N, E> {
@@ -409,15 +408,14 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathFil
         } else {
             Null::null()
         };
-        let p = get_xy(width, start);
-        let cur_p = get_xy(width, cur);
-        let angle = Angle::new(cur_p - p);
+        let start = get_xy(width, start);
+        let cur = get_xy(width, cur);
+        let angle = Angle::new(cur - start);
         PathFilterIter {
             result,
             width,
             start,
             cur,
-            cur_p,
             angle,
         }
     }
@@ -425,7 +423,7 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathFil
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterator
     for PathFilterIter<'a, N, E>
 {
-    type Item = NodeIndex;
+    type Item = Point;
     fn next(&mut self) -> Option<Self::Item> {
         if self.start.is_null() {
             return None;
@@ -435,14 +433,13 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
         }
         for node in &mut self.result {
             let p = get_xy(self.width, node);
-            let angle = Angle::new(p - self.cur_p);
-            self.cur_p = p;
+            let angle = Angle::new(p - self.cur);
             if angle != self.angle {
                 self.angle = angle;
-                let node = mem::replace(&mut self.cur, node);
+                let node = mem::replace(&mut self.cur, p);
                 return Some(mem::replace(&mut self.start, node));
             }
-            self.cur = node;
+            self.cur = p;
         }
         let node = mem::replace(&mut self.cur, Null::null());
         Some(mem::replace(&mut self.start, node))
@@ -456,29 +453,24 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
 pub struct PathSmoothIter<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> {
     result: PathFilterIter<'a, N, E>,
     map: &'a TileMap,
-    start: NodeIndex,
-    start_p: Point,
-    cur: NodeIndex,
-    cur_p: Point,
+    start: Point,
+    cur: Point,
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathSmoothIter<'a, N, E> {
     pub fn new(mut result: PathFilterIter<'a, N, E>, map: &'a TileMap) -> Self {
         let start = result.next().unwrap();
-        let start_p = get_xy(map.width, start);
-
         let cur = if let Some(c) = result.next() {
             c
         } else {
             Null::null()
         };
-        let cur_p = get_xy(map.width, cur);
-        PathSmoothIter { result, map, start, start_p, cur, cur_p }
+        PathSmoothIter { result, map, start, cur }
     }
 }
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterator
     for PathSmoothIter<'a, N, E>
 {
-    type Item = NodeIndex;
+    type Item = Point;
     fn next(&mut self) -> Option<Self::Item> {
         if self.start.is_null() {
             return None;
@@ -487,16 +479,12 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
             return Some(mem::replace(&mut self.start, Null::null()));
         }
         for node in &mut self.result {
-            let node_p = get_xy(self.map.width, node);
             // 判断该点和起点是否直线可达
-            if test_line(self.map, node_p, self.start_p).is_some() {
-                self.start_p = self.cur_p;
-                self.cur_p = node_p;
+            if test_line(self.map, node, self.start).is_some() {
                 let node = mem::replace(&mut self.cur, node);
                 return Some(mem::replace(&mut self.start, node));
             }
             self.cur = node;
-            self.cur_p = node_p;
         }
         let node = mem::replace(&mut self.cur, Null::null());
         Some(mem::replace(&mut self.start, node))
@@ -664,7 +652,7 @@ pub fn get_xy(width: usize, index: NodeIndex) -> Point {
 //#![feature(test)]
 #[cfg(test)]
 mod test_tilemap {
-    use crate::*;
+    use crate::{*, tile_map::{TileMap, PathFilterIter, PathSmoothIter, TileObstacle}, finder::{AStar, NodeIndex}, normal::{Entry, make_neighbors}};
     //use rand_core::SeedableRng;
     use test::Bencher;
     #[test]
@@ -693,7 +681,7 @@ mod test_tilemap {
 
         let mut c = 0;
         for r in PathFilterIter::new(astar.result_iter(end), map.width) {
-            println!("x:{},y:{}", r.0 % width, r.0 / width);
+            println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("c:{}", c);
@@ -706,14 +694,14 @@ mod test_tilemap {
 
         let mut c = 0;
         for r in PathFilterIter::new(astar.result_iter(end), map.width) {
-            println!("x:{},y:{}", r.0 % width, r.0 / width);
+            println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("c:{}", c);
         c = 0;
         let f = PathFilterIter::new(astar.result_iter(end), map.width);
         for r in PathSmoothIter::new(f, &map) {
-            println!("x:{},y:{}", r.0 % width, r.0 / width);
+            println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("c:{}", c);
@@ -729,10 +717,10 @@ mod test_tilemap {
         map.nodes[44 + 44 * map.width] = TileObstacle::Center as u8;
         map.nodes[33 + 33 * map.width] = TileObstacle::Center as u8;
         let width = map.width;
-        let x1 = 999; //rng.next_u32() as usize%map.column;
-        let y1 = 999; //rng.next_u32()as usize %map.row;
-        let x2 = 1; //rng.next_u32() as usize%map.column;
-        let y2 = 1; //rng.next_u32()as usize %map.row;
+        let x1 = 999; //rng.next_u32() as usize%map.width;
+        let y1 = 999; //rng.next_u32()as usize /map.width;
+        let x2 = 1; //rng.next_u32() as usize%map.width;
+        let y2 = 1; //rng.next_u32()as usize /map.width;
         println!("x1:{},y1:{}, x2:{},y2:{}", x1, y1, x2, y2);
         let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.width * map.height, 100);
         let start = NodeIndex(x1 + y1 * map.width);
@@ -742,7 +730,7 @@ mod test_tilemap {
         println!("r: {:?}", r);
         let mut c = 0;
         for r in PathFilterIter::new(astar.result_iter(end), map.width) {
-            println!("x:{},y:{}", r.0 % width, r.0 / width);
+            println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("c:{}", c);
@@ -750,7 +738,7 @@ mod test_tilemap {
         let f = PathFilterIter::new(astar.result_iter(end), map.width);
         
         for r in PathSmoothIter::new(f, &map) {
-            println!("x:{},y:{}", r.0 % width, r.0 / width);
+            println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("c:{}", c);
@@ -776,7 +764,7 @@ mod test_tilemap {
             let start = NodeIndex(x1 + y1 * map.width);
             let end = NodeIndex(x2 + y2 * map.width);
             let _r = astar.find(start, end, 30000, &mut map, make_neighbors);
-            let mut vec: Vec<NodeIndex> = Vec::with_capacity(100);
+            let mut vec = Vec::with_capacity(100);
             let f = PathFilterIter::new(astar.result_iter(end), map.width);
         
             for r in PathSmoothIter::new(f, &map) {
