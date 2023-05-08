@@ -11,3 +11,4 @@ Cargo.lock
 **/*.rs.bk
 *.png
 /.vscode/settings.json
+/.vscode/launch.json
