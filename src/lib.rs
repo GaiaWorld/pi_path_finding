@@ -18,3 +18,6 @@ mod tile_map;
 mod base;
 mod bresenham;
 mod mipmap;
+
+//#[cfg(target_arch = "wasm32")]
+mod web;

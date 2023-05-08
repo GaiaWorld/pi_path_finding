@@ -107,8 +107,10 @@ pub fn get_round(p: Point, d: Location, width: isize, height: isize) -> ([Point;
     }
     return (arr, i);
 }
+
+
 const RESOLUTIONS: [usize; 5] = [2, 3, 4, 6, 8];
-const RESOLUTIONS_2: [usize; 5] = [4, 9, 16, 36, 64];
+
 #[derive(Debug, Clone, Default)]
 pub struct MipMap {
     // 所有地图的节点
@@ -275,17 +277,17 @@ impl MipMap {
         (Aabb::new(p, p), 0)
     }
     // 获得指定范围所有可用的点
-    pub fn get_list(&self, aabb: Aabb, result: &mut Vec<Point>) {
+    pub fn list(&self, aabb: Aabb) -> ListIter {
         let bits = self.nodes.view_bits::<Lsb0>();
-        let mut i = 0;
-        for y in aabb.min.y..aabb.max.y {
-            for x in aabb.min.x..aabb.max.x {
-                let id = x as usize + i;
-                if !bits[id] {
-                    result.push(Point::new(x, y));
-                }
-            }
-            i += self.width;
+        ListIter {
+            bits,
+            width: self.width,
+            x: aabb.min.x as usize,
+            y: aabb.min.y as usize,
+            start_x: aabb.min.x as usize,
+            end_x: aabb.max.x as usize,
+            end_y: aabb.max.y as usize,
+            line_index: aabb.min.y as usize * self.width,
         }
     }
 }
@@ -350,6 +352,46 @@ impl Map {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ListIter<'a> {
+    bits: &'a BitSlice<u8>,
+    width: usize,
+    x: usize,
+    y: usize,
+    start_x: usize,
+    end_x: usize,
+    end_y: usize,
+    line_index: usize,
+}
+impl<'a> ListIter<'a> {
+
+    fn step(&mut self) {
+        self.x += 1;
+        if self.x >= self.end_x {
+            self.x = self.start_x;
+            self.line_index += self.width;
+            self.y += 1;
+        }
+    }
+}
+impl<'a> Iterator for ListIter<'a> {
+    type Item = Point;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.y >= self.end_y {
+                return None;
+            }
+            if !self.bits[self.x + self.line_index] {
+                let r = Some(Point::new(self.x as isize, self.y as isize));
+                self.step();
+                return r
+            }else{
+                self.step()
+            }
+            
+        }
+    }
+}
 
 //#![feature(test)]
 #[cfg(test)]

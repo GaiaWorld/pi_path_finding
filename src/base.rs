@@ -3,10 +3,11 @@
 //!
 
 use std::cmp::*;
+use serde::{Deserialize, Serialize};
 
 use pi_null::Null;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
 pub struct Point {
     // x坐标
     pub x: isize,
@@ -56,7 +57,7 @@ impl Null for Point {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize, Serialize)]
 pub struct Aabb {
     pub min: Point,
     pub max: Point,
