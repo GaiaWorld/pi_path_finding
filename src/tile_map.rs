@@ -403,13 +403,12 @@ pub struct PathFilterIter<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<
 impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> PathFilterIter<'a, N, E> {
     pub fn new(mut result: ResultIterator<'a, N, E>, width: usize) -> Self {
         let start = result.next().unwrap();
+        let start = get_xy(width, start);
         let cur = if let Some(c) = result.next() {
-            c
+            get_xy(width, c)
         } else {
             Null::null()
         };
-        let start = get_xy(width, start);
-        let cur = get_xy(width, cur);
         let angle = Angle::new(cur - start);
         PathFilterIter {
             result,
@@ -655,6 +654,39 @@ mod test_tilemap {
     use crate::{*, tile_map::{TileMap, PathFilterIter, PathSmoothIter, TileObstacle}, finder::{AStar, NodeIndex}, normal::{Entry, make_neighbors}};
     //use rand_core::SeedableRng;
     use test::Bencher;
+    #[test]
+    fn test1() {
+        //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+        let mut map = TileMap::new(30, 30, 100, 141);
+        let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.width * map.height, 100);
+        let start = NodeIndex(2+2*map.width);
+        let end = NodeIndex(27+27*map.width);
+
+        let r = astar.find(start, end, 30000, &mut map, make_neighbors);
+        println!("r: {:?}", r);
+
+        let mut c = 0;
+        for r in astar.result_iter(start) {
+            println!("x:{},y:{}", r.0%map.width, r.0/map.width);
+            c += 1;
+        }
+        println!("result_iter c:{}", c);
+        c = 0;
+        for r in PathFilterIter::new(astar.result_iter(start), map.width) {
+            println!("x:{},y:{}", r.x, r.y);
+            c += 1;
+        }
+        println!("PathFilterIter c:{}", c);
+        c = 0;
+        let f = PathFilterIter::new(astar.result_iter(start), map.width);
+        for r in PathSmoothIter::new(f, &map) {
+            println!("x:{},y:{}", r.x, r.y);
+            c += 1;
+        }
+        println!("PathSmoothIter :{}", c);
+
+    }
+
     #[test]
     fn test2() {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);

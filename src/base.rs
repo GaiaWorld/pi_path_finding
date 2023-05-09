@@ -36,7 +36,7 @@ impl std::ops::Add for Point {
     type Output = Point;
     
     fn add(self, other: Point) -> Point {
-        Point::new(self.x + other.x, self.y + other.y)
+        Point::new(self.x.saturating_add(other.x), self.y.saturating_sub(other.y))
     }
 }
 
@@ -45,7 +45,7 @@ impl std::ops::Sub for Point {
     type Output = Point;
     
     fn sub(self, other: Point) -> Point {
-        Point::new(self.x - other.x, self.y - other.y)
+        Point::new(self.x.saturating_sub(other.x), self.y.saturating_sub(other.y))
     }
 }
 impl Null for Point {
