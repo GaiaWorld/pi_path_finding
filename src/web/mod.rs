@@ -1,4 +1,4 @@
-#![cfg(target_arch = "wasm32")]
+//#![cfg(target_arch = "wasm32")]
 
 use crate::{
     base::Point,
@@ -62,30 +62,41 @@ pub struct MipMap {
 
 #[wasm_bindgen]
 impl MipMap {
+    // Mipmap分级地图
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             inner: crate::mipmap::MipMap::new(width, height),
             result: Default::default(),
         }
     }
+    // 判断一个点是否被设置
     pub fn is_true(&mut self, index: usize) -> bool {
         self.inner.is_true(NodeIndex(index))
     }
+    // 设置一个点为ok
     pub fn set_true(&mut self, index: usize) -> bool {
         self.inner.set_true(NodeIndex(index))
     }
+    // 设置一个点为false
     pub fn set_false(&mut self, index: usize) -> bool {
         self.inner.set_false(NodeIndex(index))
     }
+    // 将源点设为false，将目标点设为true，要求源点的值为true，目标点的值为false
     pub fn move_to(&mut self, src: usize, dest: usize) -> bool {
         self.inner.move_to(NodeIndex(src), NodeIndex(dest))
     }
+    // 计算一个点周围可以容纳下的范围及范围内的可用数量，如果当前点不可用，则返回null
+    // 参数d: Location为朝向，0-3都可以设置
     pub fn find_round(&self, index: usize, d: Location, count: usize) -> JsValue {
         let dd: u8 = unsafe{transmute(d)};
         let r = self.inner.find_round(NodeIndex(index), unsafe{transmute(dd as u32)}, count);
+        if r.1 == 0 {
+            return JsValue::NULL
+        }
         to_value(&r).unwrap()
     }
-    pub fn find_round_list_sort_by_dist(&mut self, index: usize, d: Location, count: usize, d_x: isize, d_y: isize) -> Int32Array {
+    // 寻找一个点周围可以放置的位置列表，并且按到target的距离进行排序（小-大）
+    pub fn find_round_list_sort_by_dist(&mut self, index: usize, d: Location, count: usize, target_x: isize, target_y: isize) -> Int32Array {
         let dd: u8 = unsafe{transmute(d)};
         let r = self.inner.find_round(NodeIndex(index), unsafe{transmute(dd as u32)}, count);
         if r.1 == 0 {
@@ -95,7 +106,7 @@ impl MipMap {
         for p in self.inner.list(r.0) {
             self.result.push(p);
         }
-        sort_by_dist(Point::new(d_x, d_y), &mut self.result);
+        sort_by_dist(Point::new(target_x, target_y), &mut self.result);
         let vec: &Vec<P> = unsafe{transmute(&self.result)};
         let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
         let arr = Int32Array::new(&JsValue::from_f64(rr.len() as f64));
@@ -155,7 +166,6 @@ impl AStar {
      * @param[in] tile_map: 地图
      * #return[in]: 路径数组
      */
-    # [wasm_bindgen (method , js_name = bufferData)]
     pub fn result(&mut self, node: usize, tile_map: &TileMap) {
         self.result.clear();
         for r in PathSmoothIter::new(

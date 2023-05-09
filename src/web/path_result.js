@@ -2,8 +2,12 @@ export function path_result(arr) {
     if(!window.astar) {
         return;
     }
-    for(let i = arr.length - 1; i >= 0; i-= 2) {
-        window.astar.result.push(arr[i]);
-        window.astar.result.push(arr[i+1]);
+    let old = window.astar.result;
+    if(old.buffer.byteLength < arr.length * 4) {
+        old = new Uint32Array(arr.length);
+    }else{
+        old = new Uint32Array(old.buffer);
     }
+    old.set(arr);
+    window.astar.result = old.subarray(0, arr.length);
 }
