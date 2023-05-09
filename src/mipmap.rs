@@ -396,10 +396,9 @@ impl<'a> Iterator for ListIter<'a> {
 //#![feature(test)]
 #[cfg(test)]
 mod test_mipmap {
-    use crate::{*, mipmap::MipMap, finder::NodeIndex, tile_map::Direction, base::Aabb, base::Point};
+    use crate::{mipmap::MipMap, finder::NodeIndex, base::Aabb, base::Point};
     use std::mem::transmute;
     //use rand_core::SeedableRng;
-    use test::Bencher;
     #[test]
     fn test2() {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);

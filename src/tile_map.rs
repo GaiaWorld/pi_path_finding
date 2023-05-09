@@ -6,7 +6,7 @@
 //! 如果使用PathSmoothIter来平滑路径，则斜向对应的两个直方向的瓦片有1个不可走，则该斜方向就不可走。
 //!
 
-use crate::{*, finder::{NodeIndex, NodeEntry, ResultIterator}, normal::Map, base::{Point, Angle}, bresenham::Bresenham};
+use crate::{finder::{NodeIndex, NodeEntry, ResultIterator}, normal::Map, base::{Point, Angle}, bresenham::Bresenham};
 use num_traits::Zero;
 use pi_null::Null;
 use std::{fmt::Debug, mem};
@@ -669,8 +669,7 @@ mod test_tilemap {
         map.nodes[71] = 4;
         map.nodes[72] = 4;
 
-        let width = map.width;
-
+    
         let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.width * map.height, 100);
 
         let start = NodeIndex(120);
@@ -716,7 +715,7 @@ mod test_tilemap {
         map.nodes[54 + 55 * map.width] = TileObstacle::Center as u8;
         map.nodes[44 + 44 * map.width] = TileObstacle::Center as u8;
         map.nodes[33 + 33 * map.width] = TileObstacle::Center as u8;
-        let width = map.width;
+ 
         let x1 = 999; //rng.next_u32() as usize%map.width;
         let y1 = 999; //rng.next_u32()as usize /map.width;
         let x2 = 1; //rng.next_u32() as usize%map.width;

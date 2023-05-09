@@ -11,12 +11,12 @@
 #![feature(test)]
 extern crate test;
 
-mod finder;
-mod nav_mesh;
-mod normal;
-mod tile_map;
-mod base;
-mod bresenham;
-mod mipmap;
+pub mod finder;
+pub mod nav_mesh;
+pub mod normal;
+pub mod tile_map;
+pub mod base;
+pub mod bresenham;
+pub mod mipmap;
 
-mod web;
+pub mod web;

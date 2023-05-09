@@ -7,11 +7,11 @@ use crate::{
     normal::{make_neighbors, Entry},
     tile_map::{PathSmoothIter, PathFilterIter}, mipmap::sort_by_dist,
 };
-use std::{mem::transmute, num::NonZeroI32};
+use std::{mem::transmute};
 use bytemuck::NoUninit;
 use wasm_bindgen::prelude::*;
 use serde_wasm_bindgen::to_value;
-use js_sys::{ArrayBuffer, Uint32Array, Function, Int32Array};
+use js_sys::{Int32Array};
 
 
 // 瓦片内的障碍
