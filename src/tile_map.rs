@@ -140,6 +140,9 @@ pub enum TileObstacle {
 /// 获得指定位置的障碍物描述（中心是否障碍， 右边是否障碍， 下边是否障碍）
 #[inline]
 pub fn get_obstacle(nodes: &Vec<u8>, index: usize) -> (bool, bool, bool) {
+    if index >=100 {
+        println!("overflow");
+    }
     let i = nodes[index] as usize;
     (
         (i & TileObstacle::Center as usize) > 0,
@@ -227,26 +230,57 @@ impl Map<usize> for TileMap {
         let (_, r, d) = get_obstacle(&self.nodes, cur.0);
         // 检查当前点的右边和下边
         if r {
+            arr[Direction::UpRight as usize] = Null::null();
             arr[Direction::Right as usize] = Null::null();
+            arr[Direction::DownRight as usize] = Null::null();
         }
         if d {
+            arr[Direction::DownLeft as usize] = Null::null();
             arr[Direction::Down as usize] = Null::null();
+            arr[Direction::DownRight as usize] = Null::null();
         }
+        
         // 处理右边是否可达
         let i = arr[Direction::Right as usize];
         if !i.is_null() {
             if parent.0 != i {
                 let (ok, _, down) = get_obstacle(&self.nodes, i);
                 if ok {
+                    arr[Direction::UpRight as usize] = Null::null();
                     arr[Direction::Right as usize] = Null::null();
                     arr[Direction::DownRight as usize] = Null::null();
                 } else if down {
                     arr[Direction::DownRight as usize] = Null::null();
                 }
             } else {
+                arr[Direction::UpRight as usize] = Null::null();
                 arr[Direction::Right as usize] = Null::null();
                 arr[Direction::DownRight as usize] = Null::null();
             }
+        }
+        // 处理左边是否可达
+        let i = arr[Direction::Left as usize];
+        if cur.0 == 56 {
+            println!("left: {}", i);
+        }
+        if !i.is_null() {
+            if parent.0 != i {
+                let (ok, right, down) = get_obstacle(&self.nodes, i);
+                if ok || right {
+                    arr[Direction::UpLeft as usize] = Null::null();
+                    arr[Direction::Left as usize] = Null::null();
+                    arr[Direction::DownLeft as usize] = Null::null();
+                } else if down {
+                    arr[Direction::DownLeft as usize] = Null::null();
+                }
+            } else {
+                arr[Direction::UpLeft as usize] = Null::null();
+                arr[Direction::Left as usize] = Null::null();
+                arr[Direction::DownLeft as usize] = Null::null();
+            }
+        }
+        if cur.0 == 56 {
+            println!("left over: {:?}", arr);
         }
         // 处理下边是否可达
         let i = arr[Direction::Down as usize];
@@ -254,44 +288,33 @@ impl Map<usize> for TileMap {
             if parent.0 != i {
                 let (ok, right, _) = get_obstacle(&self.nodes, i);
                 if ok {
+                    arr[Direction::DownLeft as usize] = Null::null();
                     arr[Direction::Down as usize] = Null::null();
                     arr[Direction::DownRight as usize] = Null::null();
                 } else if right {
                     arr[Direction::DownRight as usize] = Null::null();
                 }
             } else {
+                arr[Direction::DownLeft as usize] = Null::null();
                 arr[Direction::Down as usize] = Null::null();
                 arr[Direction::DownRight as usize] = Null::null();
             }
         }
-        // 处理左边是否可达
-        let i = arr[Direction::Left as usize];
-        if !i.is_null() {
-            if parent.0 != i {
-                let (ok, right, down) = get_obstacle(&self.nodes, i);
-                if ok || right {
-                    arr[Direction::Left as usize] = Null::null();
-                    arr[Direction::DownLeft as usize] = Null::null();
-                } else if down {
-                    arr[Direction::DownLeft as usize] = Null::null();
-                }
-            } else {
-                arr[Direction::Left as usize] = Null::null();
-                arr[Direction::DownLeft as usize] = Null::null();
-            }
-        }
+        
         // 处理上边是否可达
         let i = arr[Direction::Up as usize];
         if !i.is_null() {
             if parent.0 != i {
                 let (ok, right, down) = get_obstacle(&self.nodes, i);
                 if ok || down {
+                    arr[Direction::UpLeft as usize] = Null::null();
                     arr[Direction::Up as usize] = Null::null();
                     arr[Direction::UpRight as usize] = Null::null();
                 } else if right {
                     arr[Direction::UpRight as usize] = Null::null();
                 }
             } else {
+                arr[Direction::UpLeft as usize] = Null::null();
                 arr[Direction::Up as usize] = Null::null();
                 arr[Direction::UpRight as usize] = Null::null();
             }
@@ -344,7 +367,7 @@ impl Map<usize> for TileMap {
                 arr[Direction::DownRight as usize] = Null::null();
             }
         }
-
+        println!("neighbors: node:{:?}, parent:{:?}, [{:?}]", (cur.0%10,cur.0/10), (parent.0%10,parent.0/10), arr);
         NodeIterator { arr, index: 0 }
     }
 
@@ -491,7 +514,7 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
 }
 /// 判断是否地图上直线可达，返回None表示可达，否则返回最后的可达点
 pub fn test_line(map: &TileMap, start: Point, end: Point) -> Option<Point> {
-    // println!("test_line, start:{:?} end:{:?}", start, end);
+    println!("test_line, start:{:?} end:{:?}", start, end);
     let b = Bresenham::new(start, end);
     let c = map.width as isize;
     // 由于y越大越向下，所以y轴被翻转了
@@ -550,6 +573,7 @@ fn check_down(nodes: &Vec<u8>, index: isize) -> bool {
 }
 #[inline]
 fn check_center_down(nodes: &Vec<u8>, index: isize) -> bool {
+    //println!("check_center_down, {:?}", index);
     let (center, _right, down) = get_obstacle(nodes, index as usize);
     center || down
 }
@@ -580,12 +604,12 @@ fn test_line1(map: &TileMap, mut b: Bresenham, change: fn(Point) -> Point, start
             if check_oblique(&map.nodes, index) {
                 return Some(change(last))
             }
-            last = b.start;
         }else{
             if check_line(&map.nodes, index) {
                 return Some(change(last))
             }
         }
+        last = b.start;
         b.step();
     }
     let index = get_index(change(b.start), map.width);
@@ -618,16 +642,17 @@ fn test_line2(map: &TileMap, mut b: Bresenham, change: fn(Point) -> Point, start
             if check_oblique(&map.nodes, index) {
                 return Some(change(last))
             }
-            last = b.start;
-        }else if (b.float + b.steep.1) as isize != last.y { // 下次是斜线
+        }else if b.y(b.start.x + b.step) != last.y { // 下次是斜线
             if check_all(&map.nodes, index) {
                 return Some(change(last))
             }
         }else{ // 下次也不是斜线
+            //println!("test_line2, {:?}", index);
             if check_line(&map.nodes, index) { 
                 return Some(change(last))
             }
         }
+        last = b.start;
         b.step();
     }
     let index = get_index(change(b.start), map.width);
@@ -651,40 +676,53 @@ pub fn get_xy(width: usize, index: NodeIndex) -> Point {
 //#![feature(test)]
 #[cfg(test)]
 mod test_tilemap {
-    use crate::{*, tile_map::{TileMap, PathFilterIter, PathSmoothIter, TileObstacle}, finder::{AStar, NodeIndex}, normal::{Entry, make_neighbors}};
+    use crate::{*, tile_map::{TileMap, PathFilterIter, PathSmoothIter, TileObstacle, test_line}, finder::{AStar, NodeIndex}, normal::{Entry, make_neighbors}, base::Point};
     //use rand_core::SeedableRng;
     use test::Bencher;
+    fn set_obstacle(map: &mut TileMap, min: Point, max: Point) {
+        for y in min.y..max.y {
+          for x in min.x..max.x {
+            let index = y as usize * map.width + x as usize;
+            map.set_node_obstacle(NodeIndex(index), 4);
+          }
+        }
+    }
     #[test]
     fn test1() {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
-        let mut map = TileMap::new(30, 30, 100, 141);
+        let mut map = TileMap::new(10, 10, 100, 141);
         let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.width * map.height, 100);
-        let start = NodeIndex(2+2*map.width);
-        let end = NodeIndex(27+27*map.width);
+        set_obstacle(&mut map, Point::new(4, 0), Point::new(6,4));
+        set_obstacle(&mut map, Point::new(4, 5), Point::new(6,10));
+        let r = test_line(&map, Point::new(2,5), Point::new(6,4));
+        println!("test_line :{:?}", r);
+
+        let start = NodeIndex(9+9*map.width);
+        let end = NodeIndex(1+9*map.width);
 
         let r = astar.find(start, end, 30000, &mut map, make_neighbors);
         println!("r: {:?}", r);
 
         let mut c = 0;
-        for r in astar.result_iter(start) {
+        for r in astar.result_iter(end) {
             println!("x:{},y:{}", r.0%map.width, r.0/map.width);
             c += 1;
         }
         println!("result_iter c:{}", c);
         c = 0;
-        for r in PathFilterIter::new(astar.result_iter(start), map.width) {
+        for r in PathFilterIter::new(astar.result_iter(end), map.width) {
             println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("PathFilterIter c:{}", c);
         c = 0;
-        let f = PathFilterIter::new(astar.result_iter(start), map.width);
+        let f = PathFilterIter::new(astar.result_iter(end), map.width);
         for r in PathSmoothIter::new(f, &map) {
             println!("x:{},y:{}", r.x, r.y);
             c += 1;
         }
         println!("PathSmoothIter :{}", c);
-
+        
     }
 
     #[test]
