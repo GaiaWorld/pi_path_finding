@@ -3,16 +3,14 @@
 use crate::{
     base::Point,
     finder::AStarResult,
-    finder::{NodeIndex},
+    finder::NodeIndex,
     normal::{make_neighbors, Entry},
-    tile_map::{PathSmoothIter, PathFilterIter}, mipmap::sort_by_dist,
+    tile_map::{sort_by_dist, PathFilterIter, PathSmoothIter},
 };
-use std::{mem::transmute};
 use bytemuck::NoUninit;
-use wasm_bindgen::prelude::*;
 use serde_wasm_bindgen::to_value;
-use js_sys::{Int32Array};
-
+use std::mem::transmute;
+use wasm_bindgen::prelude::*;
 
 // 瓦片内的障碍
 #[wasm_bindgen]
@@ -27,6 +25,7 @@ pub enum TileObstacle {
 #[wasm_bindgen]
 pub struct TileMap {
     inner: crate::tile_map::TileMap,
+    result: Vec<Point>,
 }
 
 #[wasm_bindgen]
@@ -34,87 +33,82 @@ impl TileMap {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             inner: crate::tile_map::TileMap::new(width, height, 100, 144),
+            result: Default::default(),
         }
     }
     pub fn set_obstacle(&mut self, index: usize, obstacle: TileObstacle) {
-        self.inner.set_node_obstacle(NodeIndex(index), unsafe{transmute(obstacle)});
+        self.inner
+            .set_node_obstacle(NodeIndex(index), unsafe { transmute(obstacle) });
     }
-    pub fn get_obstacle(&mut self, index: usize) -> u8{
+    pub fn get_obstacle(&mut self, index: usize) -> u8 {
         self.inner.get_node_obstacle(NodeIndex(index))
+    }
+    // 获得指定点周围所有可用的点，周围是顺时针一圈一圈扩大，直到可用点数超过count, spacing为可用点的间隔
+    // 参数d: Direction为默认扩展的朝向，0-3都可以设置
+    pub fn find_round(&mut self, index: usize, count: usize, spacing: usize, d: Direction) {
+        let dd: u8 = unsafe { transmute(d) };
+        self.result.clear();
+        let _ = self.inner.find_round(
+            NodeIndex(index),
+            count,
+            spacing,
+            unsafe { transmute(dd as u32) },
+            &mut self.result,
+        );
+        if self.result.len() == 0 {
+            return;
+        }
+        let vec: &Vec<P> = unsafe { transmute(&self.result) };
+        let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
+        round_result(rr)
+    }
+    // 寻找一个点周围可以放置的位置列表，并且按到target的距离进行排序（小-大）
+    pub fn find_round_and_sort_by_dist(
+        &mut self,
+        index: usize,
+        count: usize,
+        spacing: usize,
+        d: Direction,
+        target_x: isize,
+        target_y: isize,
+    ) {
+        let dd: u8 = unsafe { transmute(d) };
+        self.result.clear();
+        let _ = self.inner.find_round(
+            NodeIndex(index),
+            count,
+            spacing,
+            unsafe { transmute(dd as u32) },
+            &mut self.result,
+        );
+        if self.result.len() == 0 {
+            return;
+        }
+        sort_by_dist(Point::new(target_x, target_y), &mut self.result);
+        let vec: &Vec<P> = unsafe { transmute(&self.result) };
+        let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
+        round_result(rr)
+    }
+
+    pub fn test_line(&self, start_x: isize, start_y: isize, end_x: isize, end_y: isize) -> JsValue {
+        let r = crate::tile_map::test_line(
+            &self.inner,
+            Point::new(start_x, start_y),
+            Point::new(end_x, end_y),
+        );
+        to_value(&r).unwrap()
     }
 }
 
 // 四方向枚举
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
-pub enum Location {
-    UpLeft = 0,
-    UpRight = 1,
-    DownLeft = 2,
-    DownRight = 3,
+pub enum Direction {
+    Left = 0,
+    Right = 1,
+    Up = 2,
+    Down = 3,
 }
-
-#[wasm_bindgen]
-pub struct MipMap {
-    inner: crate::mipmap::MipMap,
-    result: Vec<Point>,
-}
-
-#[wasm_bindgen]
-impl MipMap {
-    // Mipmap分级地图
-    pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            inner: crate::mipmap::MipMap::new(width, height),
-            result: Default::default(),
-        }
-    }
-    // 判断一个点是否被设置
-    pub fn is_true(&mut self, index: usize) -> bool {
-        self.inner.is_true(NodeIndex(index))
-    }
-    // 设置一个点为ok
-    pub fn set_true(&mut self, index: usize) -> bool {
-        self.inner.set_true(NodeIndex(index))
-    }
-    // 设置一个点为false
-    pub fn set_false(&mut self, index: usize) -> bool {
-        self.inner.set_false(NodeIndex(index))
-    }
-    // 将源点设为false，将目标点设为true，要求源点的值为true，目标点的值为false
-    pub fn move_to(&mut self, src: usize, dest: usize) -> bool {
-        self.inner.move_to(NodeIndex(src), NodeIndex(dest))
-    }
-    // 计算一个点周围可以容纳下的范围及范围内的可用数量，如果当前点不可用，则返回null
-    // 参数d: Location为朝向，0-3都可以设置
-    pub fn find_round(&self, index: usize, d: Location, count: usize) -> JsValue {
-        let dd: u8 = unsafe{transmute(d)};
-        let r = self.inner.find_round(NodeIndex(index), unsafe{transmute(dd as u32)}, count);
-        if r.1 == 0 {
-            return JsValue::NULL
-        }
-        to_value(&r).unwrap()
-    }
-    // 寻找一个点周围可以放置的位置列表，并且按到target的距离进行排序（小-大）
-    pub fn find_round_list_sort_by_dist(&mut self, index: usize, d: Location, count: usize, target_x: isize, target_y: isize) -> Int32Array {
-        let dd: u8 = unsafe{transmute(d)};
-        let r = self.inner.find_round(NodeIndex(index), unsafe{transmute(dd as u32)}, count);
-        if r.1 == 0 {
-            return Int32Array::new(&JsValue::from_f64(0.0))
-        }
-        self.result.clear();
-        for p in self.inner.list(r.0) {
-            self.result.push(p);
-        }
-        sort_by_dist(Point::new(target_x, target_y), &mut self.result);
-        let vec: &Vec<P> = unsafe{transmute(&self.result)};
-        let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
-        let arr = Int32Array::new(&JsValue::from_f64(rr.len() as f64));
-        arr.copy_from(rr);
-        arr
-    }
-}
-
 #[derive(Clone, Copy)]
 struct P(i32, i32);
 
@@ -123,7 +117,6 @@ unsafe impl NoUninit for P {}
 #[wasm_bindgen]
 pub struct AStar {
     inner: crate::finder::AStar<usize, Entry<usize>>,
-    result: Vec<u32>,
 }
 
 #[wasm_bindgen]
@@ -131,7 +124,6 @@ impl AStar {
     pub fn new(width: usize, height: usize, node_number: usize) -> Self {
         Self {
             inner: crate::finder::AStar::with_capacity(width * height, node_number),
-            result: Default::default(),
         }
     }
 
@@ -166,43 +158,25 @@ impl AStar {
      * @param[in] tile_map: 地图
      * #return[in]: 路径数组
      */
-    pub fn result(&mut self, node: usize, tile_map: &TileMap) {
-        self.result.clear();
+    pub fn result(&mut self, node: usize, tile_map: &mut TileMap) {
+        tile_map.result.clear();
         for r in PathSmoothIter::new(
-            PathFilterIter::new(self.inner.result_iter(NodeIndex(node)), tile_map.inner.width),
+            PathFilterIter::new(
+                self.inner.result_iter(NodeIndex(node)),
+                tile_map.inner.width,
+            ),
             &tile_map.inner,
         ) {
-            self.result.push(r.x as u32);
-            self.result.push(r.y as u32);
+            tile_map.result.push(r);
         }
-        path_result(self.result.as_slice())
+        let vec: &Vec<P> = unsafe { transmute(&tile_map.result) };
+        let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
+        path_result(rr)
     }
-}
-
-/*
- * 判断两点之间是否可以直达
- */
-#[wasm_bindgen]
-pub fn test_line(map: &TileMap, start_x: isize, start_y: isize, end_x: isize, end_y: isize) -> JsValue {
-    let r = crate::tile_map::test_line(
-        &map.inner,
-        Point::new(start_x, start_y),
-        Point::new(end_x, end_y),
-    );
-    to_value(&r).unwrap()
 }
 
 #[wasm_bindgen(module = "/src/web/path_result.js")]
 extern "C" {
-    fn path_result(arr: &[u32]);
-}
-
-#[wasm_bindgen]
-pub fn get_obstacle(nodes: &[u8], index: usize) -> Vec<u8> {
-    let r = crate::tile_map::get_obstacle(&nodes.to_vec(), index);
-    let a = if r.0 { 1 } else { 0 };
-    let b = if r.1 { 1 } else { 0 };
-    let c = if r.2 { 1 } else { 0 };
-    // [r.0, r.1, r.2]
-    vec![a, b, c]
+    fn path_result(arr: &[i32]);
+    fn round_result(arr: &[i32]);
 }

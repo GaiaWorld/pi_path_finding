@@ -86,7 +86,6 @@ impl Aabb{
         point.y >= self.min.y &&
         point.y < self.max.y
     }
-  
     // 判断矩形是否与另一个矩形相交
     pub fn intersects(&self, other: Aabb) -> bool {
         self.min.x < other.max.x &&
@@ -94,7 +93,7 @@ impl Aabb{
         self.min.y < other.max.y &&
         self.max.y > other.min.y
     }
-    
+
 }
 
 #[derive(Debug, Clone, Copy, Default)]

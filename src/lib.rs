@@ -17,6 +17,5 @@ pub mod normal;
 pub mod tile_map;
 pub mod base;
 pub mod bresenham;
-pub mod mipmap;
 
 pub mod web;
