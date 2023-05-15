@@ -1108,7 +1108,7 @@ fn test_line1(
     }
     let mut last = b.start;
     b.step();
-    while b.start.x != b.end.x && b.start.y != b.end.y {
+    while b.start.x != b.end.x || b.start.y != b.end.y {
         // 如果和终点直线连通，则可判断为直线可达
         let index = get_index(change(b.start), map.width);
         if b.start.y != last.y {
@@ -1168,7 +1168,7 @@ fn test_line2(
     }
     let mut last = b.start;
     b.step();
-    while b.start.x != b.end.x && b.start.y != b.end.y {
+    while b.start.x != b.end.x || b.start.y != b.end.y {
         // 如果和终点直线连通，则可判断为直线可达
         let index = get_index(change(b.start), map.width);
         if b.start.y != last.y {
@@ -1395,6 +1395,53 @@ mod test_tilemap {
                 Point { x: 999, y: 999 }
             ]
         );
+        rr.clear();
+    }
+    #[test]
+    fn test4() {
+        //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+        let mut map = TileMap::new(30, 30, 100, 141);
+        map.set_node_center_obstacle(NodeIndex(14 + 10*30), true);
+
+        let mut astar: AStar<usize, Entry<usize>> =
+            AStar::with_capacity(map.width * map.height, 1000);
+
+        let start = NodeIndex(24 + 10*30);
+        let end = NodeIndex(10 + 10*30);
+
+        let r = astar.find(start, end, 30000, &mut map, make_neighbors);
+        println!("r: {:?}", r);
+        let mut rr = vec![];
+
+        for r in PathFilterIter::new(astar.result_iter(end), map.width) {
+            rr.push(r);
+        }
+        println!("rr: {:?}", rr);
+        // assert_eq!(
+        //     rr,
+        //     vec![
+        //         Point { x: 10, y: 10 },
+        //         Point { x: 9, y: 10 },
+        //         Point { x: 6, y: 7 },
+        //         Point { x: 3, y: 7 },
+        //         Point { x: 3, y: 3 },
+        //         Point { x: 0, y: 0 }
+        //     ]
+        // );
+        rr.clear();
+        let f = PathFilterIter::new(astar.result_iter(end), map.width);
+        for r in PathSmoothIter::new(f, &map) {
+            rr.push(r);
+        }
+        println!("rr: {:?}", rr);
+        // assert_eq!(
+        //     rr,
+        //     vec![
+        //         Point { x: 10, y: 10 },
+        //         Point { x: 3, y: 7 },
+        //         Point { x: 0, y: 0 }
+        //     ]
+        // );
         rr.clear();
     }
     #[test]
