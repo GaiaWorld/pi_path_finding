@@ -406,17 +406,37 @@ impl TileMap {
         let mut aabb = Aabb::new(p, p);
         if count > 4 {
             // 先扩大到数量对应的范围上
-            let half_size = ((count as f32).sqrt() / 2.0) as isize;
+            let size = (count as f32).sqrt() as isize;
             // 防止尺寸超过宽高
-            let mut rsize = half_size * spacing;
-            if rsize + rsize > self.width as isize {
-                rsize = (self.width >> 1) as isize;
+            let mut rsize = size * spacing;
+            if rsize > self.width as isize {
+                rsize = self.width as isize;
             }
-            if rsize + rsize > self.height as isize {
-                rsize = (self.height >> 1) as isize;
+            if rsize > self.height as isize {
+                rsize = self.height as isize;
             }
-            aabb.min = aabb.min.add(-rsize);
-            aabb.max = aabb.max.add(rsize);
+            aabb.min = aabb.min.add(-rsize/2);
+            // 循环增大矩形时，边长偶数表示加了一半，所以需要调整方向和矩形位置
+            if size % 2 == 0 {
+                match d {
+                    Direction::Left =>{
+                        d = Direction::Right;
+                    } 
+                    Direction::Right => {
+                        d = Direction::Left;
+                        aabb.min = aabb.min.add(spacing);
+                    }
+                    Direction::Up => {
+                        d = Direction::Down;
+                        aabb.min.y += spacing;
+                    }
+                    _ => {
+                        d = Direction::Up;
+                        aabb.min.x += spacing;
+                    }
+                }
+            }
+            aabb.max = aabb.min.add(rsize);
             // 检查是否超出边界， 超出边界，则移动新范围
             if aabb.min.x < 0 {
                 aabb.max.x -= aabb.min.x;
@@ -1401,6 +1421,7 @@ mod test_tilemap {
     fn test4() {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
         let mut map = TileMap::new(30, 30, 100, 141);
+        map.set_node_center_obstacle(NodeIndex(13 + 10*30), true);
         map.set_node_center_obstacle(NodeIndex(14 + 10*30), true);
 
         let mut astar: AStar<usize, Entry<usize>> =
@@ -1466,72 +1487,40 @@ mod test_tilemap {
         assert_eq!(map.is_node_center_obstacle(NodeIndex(73)), true);
         let mut rr = vec![];
         let r = map.find_round(NodeIndex(0), 2, 0, unsafe { transmute(1) }, &mut rr);
+        //println!("rr: {:?}", rr);
         assert_eq!(rr, vec![Point { x: 0, y: 0 }, Point { x: 1, y: 0 }]);
         rr.clear();
         let r = map.find_round(NodeIndex(0), 2, 0, unsafe { transmute(2) }, &mut rr);
+        //println!("rr: {:?}", rr);
         assert_eq!(rr, vec![Point { x: 0, y: 0 }, Point { x: 0, y: 1 }]);
         rr.clear();
 
         let r = map.find_round(NodeIndex(0), 3, 0, unsafe { transmute(0) }, &mut rr);
-        assert_eq!(
-            rr,
-            vec![
-                Point { x: 0, y: 0 },
-                Point { x: 1, y: 0 },
-                Point { x: 0, y: 1 },
-                Point { x: 1, y: 1 }
-            ]
-        );
+        //println!("rr: {:?}", rr);
+        assert_eq!(rr, vec![Point { x: 0, y: 0 }, Point { x: 1, y: 0 }, Point { x: 0, y: 1 }, Point { x: 1, y: 1 }]);
         rr.clear();
         let r = map.find_round(NodeIndex(0), 5, 1, unsafe { transmute(0) }, &mut rr);
-        assert_eq!(
-            rr,
-            vec![
-                Point { x: 0, y: 0 },
-                Point { x: 2, y: 0 },
-                Point { x: 0, y: 2 },
-                Point { x: 2, y: 2 },
-                Point { x: 4, y: 0 },
-                Point { x: 4, y: 2 }
-            ]
-        );
+        //println!("rr: {:?}", rr);
+        assert_eq!(rr, vec![Point { x: 0, y: 0 }, Point { x: 2, y: 0 }, Point { x: 0, y: 2 }, Point { x: 2, y: 2 }, Point { x: 4, y: 0 }, Point { x: 4, y: 2 }]);
         rr.clear();
         let r = map.find_round(NodeIndex(47), 2, 0, unsafe { transmute(0) }, &mut rr);
+        //println!("rr: {:?}", rr);
         assert_eq!(rr, vec![Point { x: 3, y: 4 }, Point { x: 2, y: 4 }]);
         rr.clear();
         let r = map.find_round(NodeIndex(47), 2, 1, unsafe { transmute(0) }, &mut rr);
+        //println!("rr: {:?}", rr);
         assert_eq!(rr, vec![Point { x: 2, y: 4 }, Point { x: 0, y: 4 }]);
         rr.clear();
         let r = map.find_round(NodeIndex(47), 5, 1, unsafe { transmute(0) }, &mut rr);
-        assert_eq!(
-            rr,
-            vec![
-                Point { x: 0, y: 2 },
-                Point { x: 2, y: 2 },
-                Point { x: 0, y: 4 },
-                Point { x: 2, y: 4 },
-                Point { x: 4, y: 2 }
-            ]
-        );
+        //println!("rr: {:?}", rr);
+        assert_eq!(rr, vec![Point { x: 0, y: 2 }, Point { x: 2, y: 2 }, Point { x: 0, y: 4 }, Point { x: 2, y: 4 }, Point { x: 4, y: 2 }]);
         rr.clear();
         let r = map.find_round(NodeIndex(47), 9, 1, unsafe { transmute(0) }, &mut rr);
-        println!("rounds:0, {:?}, {:?}", r, rr);
-        assert_eq!(
-            rr,
-            vec![
-                Point { x: 0, y: 2 },
-                Point { x: 2, y: 2 },
-                Point { x: 0, y: 4 },
-                Point { x: 2, y: 4 },
-                Point { x: 4, y: 2 },
-                Point { x: 0, y: 0 },
-                Point { x: 2, y: 0 },
-                Point { x: 4, y: 0 },
-                Point { x: 6, y: 0 },
-                Point { x: 6, y: 2 },
-                Point { x: 7, y: 4 }
-            ]
-        );
+        println!("rounds:0, {:?}", r);
+        //println!("rr: {:?}", rr);
+        assert_eq!(rr, vec![Point { x: 0, y: 1 }, Point { x: 2, y: 1 }, Point { x: 4, y: 1 }, Point { x: 0, y: 3 }, Point { x: 2, y: 3 }, Point { x: 4, y: 3 }, Point { 
+            x: 0, y: 5 }, Point { x: 2, y: 5 }, Point { x: 6, y: 1 }, 
+            Point { x: 6, y: 3 }, Point { x: 7, y: 5 }]);
         rr.clear();
     }
     #[bench]
