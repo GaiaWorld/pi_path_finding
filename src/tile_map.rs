@@ -305,7 +305,7 @@ impl TileMap {
         self.nodes[node.0] = tile_obstacle;
         true
     }
-    pub fn set_node_center_obstacle(&mut self, node: NodeIndex, center_obstacle: bool)-> bool {
+    pub fn set_node_center_obstacle(&mut self, node: NodeIndex, center_obstacle: bool) -> bool {
         if node.0 >= self.amount {
             return false;
         }
@@ -316,7 +316,7 @@ impl TileMap {
         ) as u8;
         true
     }
-    pub fn set_node_right_obstacle(&mut self, node: NodeIndex, right_obstacle: bool)-> bool {
+    pub fn set_node_right_obstacle(&mut self, node: NodeIndex, right_obstacle: bool) -> bool {
         if node.0 >= self.amount {
             return false;
         }
@@ -327,7 +327,7 @@ impl TileMap {
         ) as u8;
         true
     }
-    pub fn set_node_down_obstacle(&mut self, node: NodeIndex, down_obstacle: bool)-> bool {
+    pub fn set_node_down_obstacle(&mut self, node: NodeIndex, down_obstacle: bool) -> bool {
         if node.0 >= self.amount {
             return false;
         }
@@ -415,13 +415,13 @@ impl TileMap {
             if rsize > self.height as isize {
                 rsize = self.height as isize;
             }
-            aabb.min = aabb.min.add(-rsize/2);
+            aabb.min = aabb.min.add(-rsize / 2);
             // 循环增大矩形时，边长偶数表示加了一半，所以需要调整方向和矩形位置
             if size % 2 == 0 {
                 match d {
-                    Direction::Left =>{
+                    Direction::Left => {
                         d = Direction::Right;
-                    } 
+                    }
                     Direction::Right => {
                         d = Direction::Left;
                         aabb.min = aabb.min.add(spacing);
@@ -526,7 +526,7 @@ impl TileMap {
                     d = Direction::Left;
                     let mut old = aabb.max.y;
                     aabb.max.y += spacing; // 向下移动边界
-                    if aabb.max.y > self.width as isize {
+                    if aabb.max.y > self.height as isize {
                         // 超出边界，向上移动范围
                         old = aabb.min.y;
                         aabb.min.y -= aabb.max.y - self.height as isize;
@@ -537,7 +537,7 @@ impl TileMap {
                         }
                         Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     } else {
-                        Aabb::new(Point::new(aabb.min.y, old), aabb.max)
+                        Aabb::new(Point::new(aabb.min.x, old), aabb.max)
                     }
                 }
             };
@@ -1421,14 +1421,14 @@ mod test_tilemap {
     fn test4() {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
         let mut map = TileMap::new(30, 30, 100, 141);
-        map.set_node_center_obstacle(NodeIndex(13 + 10*30), true);
-        map.set_node_center_obstacle(NodeIndex(14 + 10*30), true);
+        map.set_node_center_obstacle(NodeIndex(13 + 10 * 30), true);
+        map.set_node_center_obstacle(NodeIndex(14 + 10 * 30), true);
 
         let mut astar: AStar<usize, Entry<usize>> =
             AStar::with_capacity(map.width * map.height, 1000);
 
-        let start = NodeIndex(24 + 10*30);
-        let end = NodeIndex(10 + 10*30);
+        let start = NodeIndex(24 + 10 * 30);
+        let end = NodeIndex(10 + 10 * 30);
 
         let r = astar.find(start, end, 30000, &mut map, make_neighbors);
         println!("r: {:?}", r);
@@ -1437,32 +1437,55 @@ mod test_tilemap {
         for r in PathFilterIter::new(astar.result_iter(end), map.width) {
             rr.push(r);
         }
-        println!("rr: {:?}", rr);
-        // assert_eq!(
-        //     rr,
-        //     vec![
-        //         Point { x: 10, y: 10 },
-        //         Point { x: 9, y: 10 },
-        //         Point { x: 6, y: 7 },
-        //         Point { x: 3, y: 7 },
-        //         Point { x: 3, y: 3 },
-        //         Point { x: 0, y: 0 }
-        //     ]
-        // );
+        //println!("rr: {:?}", rr);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 10, y: 10 },
+                Point { x: 11, y: 11 },
+                Point { x: 15, y: 11 },
+                Point { x: 16, y: 10 },
+                Point { x: 24, y: 10 }
+            ]
+        );
         rr.clear();
         let f = PathFilterIter::new(astar.result_iter(end), map.width);
         for r in PathSmoothIter::new(f, &map) {
             rr.push(r);
         }
-        println!("rr: {:?}", rr);
-        // assert_eq!(
-        //     rr,
-        //     vec![
-        //         Point { x: 10, y: 10 },
-        //         Point { x: 3, y: 7 },
-        //         Point { x: 0, y: 0 }
-        //     ]
-        // );
+        //println!("rr: {:?}", rr);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 10, y: 10 },
+                Point { x: 11, y: 11 },
+                Point { x: 15, y: 11 },
+                Point { x: 24, y: 10 }
+            ]
+        );
+        rr.clear();
+        let r = map.find_round(
+            NodeIndex(20 + 4 * map.width),
+            7,
+            0,
+            unsafe { transmute(0) },
+            &mut rr,
+        );
+        //println!("r: {:?} rr: {:?}", r, rr);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 19, y: 3 },
+                Point { x: 20, y: 3 },
+                Point { x: 19, y: 4 },
+                Point { x: 20, y: 4 },
+                Point { x: 21, y: 3 },
+                Point { x: 21, y: 4 },
+                Point { x: 19, y: 5 },
+                Point { x: 20, y: 5 },
+                Point { x: 21, y: 5 }
+            ]
+        );
         rr.clear();
     }
     #[test]
@@ -1497,11 +1520,29 @@ mod test_tilemap {
 
         let r = map.find_round(NodeIndex(0), 3, 0, unsafe { transmute(0) }, &mut rr);
         //println!("rr: {:?}", rr);
-        assert_eq!(rr, vec![Point { x: 0, y: 0 }, Point { x: 1, y: 0 }, Point { x: 0, y: 1 }, Point { x: 1, y: 1 }]);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 0, y: 0 },
+                Point { x: 1, y: 0 },
+                Point { x: 0, y: 1 },
+                Point { x: 1, y: 1 }
+            ]
+        );
         rr.clear();
         let r = map.find_round(NodeIndex(0), 5, 1, unsafe { transmute(0) }, &mut rr);
         //println!("rr: {:?}", rr);
-        assert_eq!(rr, vec![Point { x: 0, y: 0 }, Point { x: 2, y: 0 }, Point { x: 0, y: 2 }, Point { x: 2, y: 2 }, Point { x: 4, y: 0 }, Point { x: 4, y: 2 }]);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 0, y: 0 },
+                Point { x: 2, y: 0 },
+                Point { x: 0, y: 2 },
+                Point { x: 2, y: 2 },
+                Point { x: 4, y: 0 },
+                Point { x: 4, y: 2 }
+            ]
+        );
         rr.clear();
         let r = map.find_round(NodeIndex(47), 2, 0, unsafe { transmute(0) }, &mut rr);
         //println!("rr: {:?}", rr);
@@ -1513,14 +1554,36 @@ mod test_tilemap {
         rr.clear();
         let r = map.find_round(NodeIndex(47), 5, 1, unsafe { transmute(0) }, &mut rr);
         //println!("rr: {:?}", rr);
-        assert_eq!(rr, vec![Point { x: 0, y: 2 }, Point { x: 2, y: 2 }, Point { x: 0, y: 4 }, Point { x: 2, y: 4 }, Point { x: 4, y: 2 }]);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 0, y: 2 },
+                Point { x: 2, y: 2 },
+                Point { x: 0, y: 4 },
+                Point { x: 2, y: 4 },
+                Point { x: 4, y: 2 }
+            ]
+        );
         rr.clear();
         let r = map.find_round(NodeIndex(47), 9, 1, unsafe { transmute(0) }, &mut rr);
         println!("rounds:0, {:?}", r);
         //println!("rr: {:?}", rr);
-        assert_eq!(rr, vec![Point { x: 0, y: 1 }, Point { x: 2, y: 1 }, Point { x: 4, y: 1 }, Point { x: 0, y: 3 }, Point { x: 2, y: 3 }, Point { x: 4, y: 3 }, Point { 
-            x: 0, y: 5 }, Point { x: 2, y: 5 }, Point { x: 6, y: 1 }, 
-            Point { x: 6, y: 3 }, Point { x: 7, y: 5 }]);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 0, y: 1 },
+                Point { x: 2, y: 1 },
+                Point { x: 4, y: 1 },
+                Point { x: 0, y: 3 },
+                Point { x: 2, y: 3 },
+                Point { x: 4, y: 3 },
+                Point { x: 0, y: 5 },
+                Point { x: 2, y: 5 },
+                Point { x: 6, y: 1 },
+                Point { x: 6, y: 3 },
+                Point { x: 7, y: 5 }
+            ]
+        );
         rr.clear();
     }
     #[bench]

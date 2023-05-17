@@ -45,10 +45,10 @@ impl TileMap {
     }
     // 获得指定点周围所有可用的点，周围是顺时针一圈一圈扩大，直到可用点数超过count, spacing为可用点的间隔
     // 参数d: Direction为默认扩展的朝向，0-3都可以设置
-    pub fn find_round(&mut self, index: usize, count: usize, spacing: usize, d: Direction) {
+    pub fn find_round(&mut self, index: usize, count: usize, spacing: usize, d: Direction)-> JsValue {
         let dd: u8 = unsafe { transmute(d) };
         self.result.clear();
-        let _ = self.inner.find_round(
+        let aabb = self.inner.find_round(
             NodeIndex(index),
             count,
             spacing,
@@ -56,11 +56,12 @@ impl TileMap {
             &mut self.result,
         );
         if self.result.len() == 0 {
-            return;
+            return to_value(&aabb).unwrap()
         }
         let vec: &Vec<P> = unsafe { transmute(&self.result) };
         let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
-        round_result(rr)
+        round_result(rr);
+        return to_value(&aabb).unwrap()
     }
     // 寻找一个点周围可以放置的位置列表，并且按到target的距离进行排序（小-大）
     pub fn find_round_and_sort_by_dist(
@@ -71,10 +72,10 @@ impl TileMap {
         d: Direction,
         target_x: isize,
         target_y: isize,
-    ) {
+    ) -> JsValue {
         let dd: u8 = unsafe { transmute(d) };
         self.result.clear();
-        let _ = self.inner.find_round(
+        let aabb = self.inner.find_round(
             NodeIndex(index),
             count,
             spacing,
@@ -82,12 +83,13 @@ impl TileMap {
             &mut self.result,
         );
         if self.result.len() == 0 {
-            return;
+            return to_value(&aabb).unwrap()
         }
         sort_by_dist(Point::new(target_x, target_y), &mut self.result);
         let vec: &Vec<P> = unsafe { transmute(&self.result) };
         let rr: &[i32] = bytemuck::cast_slice(&vec.as_slice());
-        round_result(rr)
+        round_result(rr);
+        return to_value(&aabb).unwrap()
     }
 
     pub fn test_line(&self, start_x: isize, start_y: isize, end_x: isize, end_y: isize) -> JsValue {
