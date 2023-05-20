@@ -499,7 +499,7 @@ impl TileMap {
                 }
                 Direction::Up => {
                     d = Direction::Right;
-                    if aabb.max.y + spacing> self.height as isize {
+                    if aabb.max.y + spacing > self.height as isize {
                         // 超出边界，向下移动范围
                         let old = aabb.min.y;
                         aabb.min.y -= spacing;
@@ -906,7 +906,7 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
 pub fn test_line(map: &TileMap, start: Point, end: Point) -> Option<Point> {
     // println!("test_line, start:{:?} end:{:?}", start, end);
     if start == end {
-        return None
+        return None;
     }
     let b = Bresenham::new(start, end);
     let c = map.width as isize;
@@ -1585,12 +1585,25 @@ mod test_tilemap {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
         let mut map = TileMap::new(30, 30, 100, 141);
         let mut rr = vec![];
-        let r = map.find_round(NodeIndex(15+24*30), 5, 0, unsafe { transmute(3) }, &mut rr);
+        let r = map.find_round(
+            NodeIndex(15 + 24 * 30),
+            5,
+            0,
+            unsafe { transmute(3) },
+            &mut rr,
+        );
         //println!("r, {:?}, rr: {:?}", r, rr);
-        assert_eq!(rr, vec![Point { x: 15, 
-            y: 23 }, Point { x: 16, y: 23 
-            }, Point { x: 15, y: 24 }, Point { x: 16, y: 24 }, Point { x: 15, y: 25 }, Point { x: 16, 
-            y: 25 }]);
+        assert_eq!(
+            rr,
+            vec![
+                Point { x: 15, y: 23 },
+                Point { x: 16, y: 23 },
+                Point { x: 15, y: 24 },
+                Point { x: 16, y: 24 },
+                Point { x: 15, y: 25 },
+                Point { x: 16, y: 25 }
+            ]
+        );
         rr.clear();
     }
     #[bench]
