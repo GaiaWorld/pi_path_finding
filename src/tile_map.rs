@@ -387,7 +387,7 @@ impl TileMap {
     // 获得指定点周围所有可用的点，周围是顺时针一圈一圈扩大，直到可用点数超过count, spacing为可用点的间隔
     fn find(
         &self,
-        mut p: Point,
+        p: Point,
         count: usize,
         spacing: isize,
         mut d: Direction,
@@ -460,14 +460,13 @@ impl TileMap {
             // 检查新范围是否超出边界
             // 超出边界，则移动新范围，如果移动后另一端也超出边界，则返回
             // 新范围和旧范围，返回差值范围
-            let mut old = 0;
             let diff = match d {
                 Direction::Left => {
                     // 向左扩展边界
                     d = Direction::Up;
                     if aabb.min.x < spacing {
                         // 超出边界，向右移动范围
-                        old = aabb.max.x;
+                        let old = aabb.max.x;
                         aabb.max.x += spacing;
                         if aabb.max.x > self.width as isize {
                             // 移动后另一端超出边界，则返回
@@ -475,7 +474,7 @@ impl TileMap {
                         }
                         Aabb::new(Point::new(old, aabb.min.y), aabb.max)
                     } else {
-                        old = aabb.min.x;
+                        let old = aabb.min.x;
                         aabb.min.x -= spacing; // 向左移动边界
                         Aabb::new(aabb.min, Point::new(old, aabb.max.y))
                     }
@@ -485,7 +484,7 @@ impl TileMap {
                     d = Direction::Down;
                     if aabb.max.x + spacing > self.width as isize {
                         // 超出边界，向左移动范围
-                        old = aabb.min.x;
+                        let old = aabb.min.x;
                         aabb.min.x -= spacing;
                         if aabb.min.x < 0 {
                             // 移动后另一端超出边界，则返回
@@ -493,7 +492,7 @@ impl TileMap {
                         }
                         Aabb::new(aabb.min, Point::new(old, aabb.max.y))
                     } else {
-                        old = aabb.max.x;
+                        let old = aabb.max.x;
                         aabb.max.x += spacing; // 向右移动边界
                         Aabb::new(Point::new(old, aabb.min.y), aabb.max)
                     }
@@ -502,7 +501,7 @@ impl TileMap {
                     d = Direction::Right;
                     if aabb.max.y + spacing> self.height as isize {
                         // 超出边界，向下移动范围
-                        old = aabb.min.y;
+                        let old = aabb.min.y;
                         aabb.min.y -= spacing;
                         if aabb.min.y < 0 {
                             // 移动后另一端超出边界，则返回
@@ -510,7 +509,7 @@ impl TileMap {
                         }
                         Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     } else {
-                        old = aabb.max.y;
+                        let old = aabb.max.y;
                         aabb.max.y += spacing; // 向上移动边界
                         Aabb::new(Point::new(aabb.min.x, old), aabb.max)
                     }
@@ -519,7 +518,7 @@ impl TileMap {
                     d = Direction::Left;
                     if aabb.min.y < spacing {
                         // 超出边界，向上移动范围
-                        old = aabb.max.y;
+                        let old = aabb.max.y;
                         aabb.max.y += spacing;
                         if aabb.max.y > self.height as isize {
                             // 移动后另一端超出边界，则返回
@@ -527,7 +526,7 @@ impl TileMap {
                         }
                         Aabb::new(Point::new(aabb.min.x, old), aabb.max)
                     } else {
-                        old = aabb.min.y;
+                        let old = aabb.min.y;
                         aabb.min.y -= spacing; // 向下移动边界
                         Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     }
