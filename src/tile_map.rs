@@ -506,28 +506,10 @@ impl TileMap {
                 }
                 Direction::Up => {
                     d = Direction::Right;
-                    let mut old = aabb.min.y;
-                    aabb.min.y -= spacing; // 向上移动边界
-                    if aabb.min.y < 0 {
-                        // 超出边界，向下移动范围
-                        old = aabb.max.y;
-                        aabb.max.y -= aabb.min.y;
-                        aabb.min.y = 0;
-                        if aabb.max.y > self.height as isize {
-                            // 移动后另一端超出边界，则返回
-                            return aabb;
-                        }
-                        Aabb::new(Point::new(aabb.min.x, old), aabb.max)
-                    } else {
-                        Aabb::new(aabb.min, Point::new(aabb.max.x, old))
-                    }
-                }
-                _ => {
-                    d = Direction::Left;
                     let mut old = aabb.max.y;
-                    aabb.max.y += spacing; // 向下移动边界
+                    aabb.max.y += spacing; // 向上移动边界
                     if aabb.max.y > self.height as isize {
-                        // 超出边界，向上移动范围
+                        // 超出边界，向下移动范围
                         old = aabb.min.y;
                         aabb.min.y -= aabb.max.y - self.height as isize;
                         aabb.max.y = self.height as isize;
@@ -538,6 +520,24 @@ impl TileMap {
                         Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     } else {
                         Aabb::new(Point::new(aabb.min.x, old), aabb.max)
+                    }
+                }
+                _ => {
+                    d = Direction::Left;
+                    let mut old = aabb.min.y;
+                    aabb.min.y -= spacing; // 向下移动边界
+                    if aabb.min.y < 0 {
+                        // 超出边界，向上移动范围
+                        old = aabb.max.y;
+                        aabb.max.y -= aabb.min.y;
+                        aabb.min.y = 0;
+                        if aabb.max.y > self.height as isize {
+                            // 移动后另一端超出边界，则返回
+                            return aabb;
+                        }
+                        Aabb::new(Point::new(aabb.min.x, old), aabb.max)
+                    } else {
+                        Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     }
                 }
             };
@@ -914,6 +914,9 @@ impl<'a, N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> Iterato
 /// 判断是否地图上直线可达，返回None表示可达，否则返回最后的可达点
 pub fn test_line(map: &TileMap, start: Point, end: Point) -> Option<Point> {
     // println!("test_line, start:{:?} end:{:?}", start, end);
+    if start == end {
+        return None
+    }
     let b = Bresenham::new(start, end);
     let c = map.width as isize;
     // 由于y越大越向下，所以y轴被翻转了
@@ -1584,6 +1587,19 @@ mod test_tilemap {
                 Point { x: 7, y: 5 }
             ]
         );
+        rr.clear();
+    }
+    #[test]
+    fn test6() {
+        //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+        let mut map = TileMap::new(30, 30, 100, 141);
+        let mut rr = vec![];
+        let r = map.find_round(NodeIndex(15+24*30), 5, 0, unsafe { transmute(3) }, &mut rr);
+        //println!("r, {:?}, rr: {:?}", r, rr);
+        assert_eq!(rr, vec![Point { x: 15, 
+            y: 23 }, Point { x: 16, y: 23 
+            }, Point { x: 15, y: 24 }, Point { x: 16, y: 24 }, Point { x: 15, y: 25 }, Point { x: 16, 
+            y: 25 }]);
         rr.clear();
     }
     #[bench]
