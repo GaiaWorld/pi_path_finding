@@ -398,11 +398,6 @@ impl TileMap {
             result.push(p);
             return Aabb::new(p, p.add(spacing));
         }
-        // 将center和aabb按spacing对齐
-        if spacing > 1 {
-            let r = Point::new(p.x % spacing, p.y % spacing);
-            p = p - r;
-        }
         let mut aabb = Aabb::new(p, p);
         if count > 4 {
             // 先扩大到数量对应的范围上
@@ -465,78 +460,75 @@ impl TileMap {
             // 检查新范围是否超出边界
             // 超出边界，则移动新范围，如果移动后另一端也超出边界，则返回
             // 新范围和旧范围，返回差值范围
+            let mut old = 0;
             let diff = match d {
                 Direction::Left => {
                     // 向左扩展边界
                     d = Direction::Up;
-                    let mut old = aabb.min.x;
-                    aabb.min.x -= spacing; // 向左移动边界
-                    if aabb.min.x < 0 {
+                    if aabb.min.x < spacing {
                         // 超出边界，向右移动范围
                         old = aabb.max.x;
-                        aabb.max.x -= aabb.min.x;
-                        aabb.min.x = 0;
+                        aabb.max.x += spacing;
                         if aabb.max.x > self.width as isize {
                             // 移动后另一端超出边界，则返回
                             return aabb;
                         }
                         Aabb::new(Point::new(old, aabb.min.y), aabb.max)
                     } else {
+                        old = aabb.min.x;
+                        aabb.min.x -= spacing; // 向左移动边界
                         Aabb::new(aabb.min, Point::new(old, aabb.max.y))
                     }
                 }
                 Direction::Right => {
                     // 向右扩展边界
                     d = Direction::Down;
-                    let mut old = aabb.max.x;
-                    aabb.max.x += spacing; // 向右移动边界
-                    if aabb.max.x > self.width as isize {
+                    if aabb.max.x + spacing > self.width as isize {
                         // 超出边界，向左移动范围
                         old = aabb.min.x;
-                        aabb.min.x -= aabb.max.x - self.width as isize;
-                        aabb.max.x = self.width as isize;
+                        aabb.min.x -= spacing;
                         if aabb.min.x < 0 {
                             // 移动后另一端超出边界，则返回
                             return aabb;
                         }
                         Aabb::new(aabb.min, Point::new(old, aabb.max.y))
                     } else {
+                        old = aabb.max.x;
+                        aabb.max.x += spacing; // 向右移动边界
                         Aabb::new(Point::new(old, aabb.min.y), aabb.max)
                     }
                 }
                 Direction::Up => {
                     d = Direction::Right;
-                    let mut old = aabb.max.y;
-                    aabb.max.y += spacing; // 向上移动边界
-                    if aabb.max.y > self.height as isize {
+                    if aabb.max.y + spacing> self.height as isize {
                         // 超出边界，向下移动范围
                         old = aabb.min.y;
-                        aabb.min.y -= aabb.max.y - self.height as isize;
-                        aabb.max.y = self.height as isize;
+                        aabb.min.y -= spacing;
                         if aabb.min.y < 0 {
                             // 移动后另一端超出边界，则返回
                             return aabb;
                         }
                         Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     } else {
+                        old = aabb.max.y;
+                        aabb.max.y += spacing; // 向上移动边界
                         Aabb::new(Point::new(aabb.min.x, old), aabb.max)
                     }
                 }
                 _ => {
                     d = Direction::Left;
-                    let mut old = aabb.min.y;
-                    aabb.min.y -= spacing; // 向下移动边界
-                    if aabb.min.y < 0 {
+                    if aabb.min.y < spacing {
                         // 超出边界，向上移动范围
                         old = aabb.max.y;
-                        aabb.max.y -= aabb.min.y;
-                        aabb.min.y = 0;
+                        aabb.max.y += spacing;
                         if aabb.max.y > self.height as isize {
                             // 移动后另一端超出边界，则返回
                             return aabb;
                         }
                         Aabb::new(Point::new(aabb.min.x, old), aabb.max)
                     } else {
+                        old = aabb.min.y;
+                        aabb.min.y -= spacing; // 向下移动边界
                         Aabb::new(aabb.min, Point::new(aabb.max.x, old))
                     }
                 }
