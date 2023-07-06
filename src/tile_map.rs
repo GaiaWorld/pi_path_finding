@@ -14,8 +14,8 @@ use crate::{
 };
 use num_traits::Zero;
 use pi_null::Null;
-use std::fmt::Debug;
 use std::mem::{replace, transmute, MaybeUninit};
+use std::{fmt::Debug, ops::Range};
 
 // 四方向枚举
 #[repr(C)]
@@ -296,14 +296,33 @@ impl TileMap {
         }
     }
     pub fn get_node_obstacle(&self, node: NodeIndex) -> u8 {
-        self.nodes[node.0]
+        if node.0 < self.amount {
+            unsafe { *self.nodes.get_unchecked(node.0) }
+        } else {
+            u8::MAX
+        }
     }
     pub fn is_node_center_obstacle(&self, node: NodeIndex) -> bool {
-        (self.nodes[node.0] & TileObstacle::Center as u8) != 0
+        (self.get_node_obstacle(node) & TileObstacle::Center as u8) != 0
     }
     pub fn set_node_obstacle(&mut self, node: NodeIndex, tile_obstacle: u8) -> bool {
         self.nodes[node.0] = tile_obstacle;
         true
+    }
+    pub fn set_range_obstacle(&mut self, mut x: Range<usize>, mut y: Range<usize>, obstacle: u8) {
+        if x.end > self.width {
+            x.end = self.width;
+        }
+        if y.end > self.height {
+            y.end = self.height;
+        }
+        let mut start = y.start * self.width;
+        for _ in y {
+            for xx in x.start..x.end {
+                self.nodes[xx + start] = obstacle;
+            }
+            start += self.width;
+        }
     }
     pub fn set_node_center_obstacle(&mut self, node: NodeIndex, center_obstacle: bool) -> bool {
         if node.0 >= self.amount {
@@ -453,6 +472,12 @@ impl TileMap {
             self.spacing_points(spacing, &aabb, result);
         } else {
             aabb.max = p.add(spacing);
+            if aabb.max.x > self.width as isize {
+                aabb.max.x = self.width as isize;
+            }
+            if aabb.max.y > self.height as isize {
+                aabb.max.y = self.height as isize;
+            }
             result.push(p);
         }
         loop {
@@ -556,7 +581,13 @@ impl TileMap {
         }
     }
     // 在间隔范围内找出1个可用的点
-    fn range_point(&self, mut line_index: isize, aabb: Aabb, vec: &mut Vec<Point>) {
+    fn range_point(&self, mut line_index: isize, mut aabb: Aabb, vec: &mut Vec<Point>) {
+        if aabb.max.x > self.width as isize {
+            aabb.max.x = self.width as isize;
+        }
+        if aabb.max.y > self.height as isize {
+            aabb.max.y = self.height as isize;
+        }
         for y in aabb.min.y..aabb.max.y {
             for x in aabb.min.x..aabb.max.x {
                 if !self.is_node_center_obstacle(NodeIndex((x + line_index) as usize)) {
@@ -1360,6 +1391,63 @@ mod test_tilemap {
         rr.clear();
     }
     #[test]
+    fn test22() {
+        //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+        let mut map = TileMap::new(11, 11, 100, 141);
+        map.set_node_center_obstacle(NodeIndex(4 + 4 * 11), true);
+        map.set_node_center_obstacle(NodeIndex(5 + 4 * 11), true);
+        map.set_node_center_obstacle(NodeIndex(6 + 4 * 11), true);
+
+        map.set_node_center_obstacle(NodeIndex(4 + 5 * 11), true);
+        map.set_node_center_obstacle(NodeIndex(5 + 5 * 11), true);
+        map.set_node_center_obstacle(NodeIndex(6 + 5 * 11), true);
+
+        map.set_node_center_obstacle(NodeIndex(4 + 6 * 11), true);
+        map.set_node_center_obstacle(NodeIndex(5 + 6 * 11), true);
+        map.set_node_center_obstacle(NodeIndex(6 + 6 * 11), true);
+
+        let mut astar: AStar<usize, Entry<usize>> =
+            AStar::with_capacity(map.width * map.height, 100);
+
+        let start = NodeIndex(120);
+        let end = NodeIndex(0);
+
+        let r = astar.find(start, end, 30000, &mut map, make_neighbors);
+        println!("r: {:?}", r);
+        let mut rr = vec![];
+
+        for r in PathFilterIter::new(astar.result_iter(end), map.width) {
+            rr.push(r);
+        }
+        println!("rr: {:?}", rr);
+        // assert_eq!(
+        //     rr,
+        //     vec![
+        //         Point { x: 10, y: 10 },
+        //         Point { x: 9, y: 10 },
+        //         Point { x: 6, y: 7 },
+        //         Point { x: 3, y: 7 },
+        //         Point { x: 3, y: 3 },
+        //         Point { x: 0, y: 0 }
+        //     ]
+        // );
+        rr.clear();
+        let f = PathFilterIter::new(astar.result_iter(end), map.width);
+        for r in PathSmoothIter::new(f, &map) {
+            rr.push(r);
+        }
+        println!("rr: {:?}", rr);
+        // assert_eq!(
+        //     rr,
+        //     vec![
+        //         Point { x: 10, y: 10 },
+        //         Point { x: 3, y: 7 },
+        //         Point { x: 0, y: 0 }
+        //     ]
+        // );
+        rr.clear();
+    }
+    #[test]
     fn test3() {
         //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
         let mut map = TileMap::new(1000, 1000, 100, 141);
@@ -1604,6 +1692,36 @@ mod test_tilemap {
                 Point { x: 16, y: 25 }
             ]
         );
+        rr.clear();
+    }
+    #[test]
+    fn test7() {
+        //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+        let mut map = TileMap::new(20, 20, 100, 141);
+        map.set_range_obstacle(0..map.width, 0..map.height, u8::MAX);
+        map.set_range_obstacle(0..12, 16..20, 0);
+        // map.set_range_obstacle(18..20, 0..6, 0);
+        // map.set_range_obstacle(20..22, 0..4, 0);
+        let mut rr = vec![];
+        let r = map.find_round(
+            NodeIndex(11 + 19 * map.width),
+            3,
+            1,
+            unsafe { transmute(2) },
+            &mut rr,
+        );
+        println!("r, {:?}, rr: {:?}", r, rr);
+        // assert_eq!(
+        //     rr,
+        //     vec![
+        //         Point { x: 15, y: 23 },
+        //         Point { x: 16, y: 23 },
+        //         Point { x: 15, y: 24 },
+        //         Point { x: 16, y: 24 },
+        //         Point { x: 15, y: 25 },
+        //         Point { x: 16, y: 25 }
+        //     ]
+        // );
         rr.clear();
     }
     #[bench]
