@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TileFlagType {
-    None = 0,
+    All = 0,
     Center = 1,
     Right = 2,
     Down = 4,
@@ -37,22 +37,22 @@ impl TileMap {
         }
     }
     pub fn set_node_flag(&mut self, index: usize, flag_type: TileFlagType, value: u8) -> u8 {
-        if flag_type == TileFlagType::None {
-            self.inner.get_node_flag(NodeIndex(index))
+        if flag_type == TileFlagType::All {
+            self.inner.set_node_flag(NodeIndex(index), value)
         } else {
             self.inner
                 .set_node_flag_type(NodeIndex(index), unsafe { transmute(flag_type) }, value)
         }
     }
     pub fn get_node_flag(&mut self, index: usize, flag_type: TileFlagType) -> u8 {
-        if flag_type == TileFlagType::None {
+        if flag_type == TileFlagType::All {
             self.inner.get_node_flag(NodeIndex(index))
         } else {
             self.inner
                 .get_node_flag_type(NodeIndex(index), unsafe { transmute(flag_type) })
         }
     }
-    pub fn set_range_flag(&mut self, x1: usize, x2: usize, y1: usize, y2: usize, value: u8) {
+    pub fn set_range_flag(&mut self, x1: usize, y1: usize, x2: usize, y2: usize, value: u8) {
         let aabb = Aabb::new(
             Point::new(x1 as isize, y1 as isize),
             Point::new(x2 as isize, y2 as isize),
