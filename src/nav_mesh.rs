@@ -116,7 +116,7 @@ impl<N: Copy + RealField + Debug> NavMeshMap<N> {
 
         match r {
             AStarResult::Found => {}
-            AStarResult::NotFound => {
+            AStarResult::NotFound(_) => {
                 return Err("AStarResult::NotFound".to_string());
             }
             AStarResult::LimitNotFound(_) => {

@@ -60,7 +60,7 @@ pub enum AStarResult {
     /// 找到了路径
     Found,
     /// 没找到路径
-    NotFound,
+    NotFound(NodeIndex),
     /// 被max_number限制，没找到路径，返回最接近的节点
     LimitNotFound(NodeIndex),
 }
@@ -143,6 +143,9 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
         self.finder.nodes[start.0].clear(self.finder.version);
         // 创建起点的节点邻居
         let mut nn = make_neighbors(arg, start, end, &mut self.finder);
+        let mut near = nn.node;
+        let mut near_h = nn.f;
+        println!("start: {:?}, end: {:?}, h0: {:?}", start, end, near_h);
         loop {
             // 弹出nn中的最优邻居节点NodeIndex，弹出后，nn代价大小会变
             let node = nn.pop(&self.finder, NodeState::FromOpen);
@@ -153,7 +156,7 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
                     nn = n.0;
                 } else {
                     // 如果open表空， 则返回NotFound
-                    return AStarResult::NotFound;
+                    return AStarResult::NotFound(near);
                 }
                 continue;
             }
@@ -165,6 +168,12 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
             if nn.start < nn.end {
                 // 创建该点的节点邻居
                 let mut nn1 = make_neighbors(arg, node, end, &mut self.finder);
+                let h = self.finder.nodes[node.0].h();
+                // println!("======= h1: {:?}, node: {:?}", h, node);
+                if h < near_h  {
+                    near = node;
+                    near_h = h;
+                }
                 // 如果该节点邻居可用
                 if nn1.start < nn1.end {
                     // 如果nn1优于nn， 则交换两者
@@ -181,6 +190,12 @@ impl<N: PartialOrd + Zero + Copy + Debug, E: NodeEntry<N> + Default> AStar<N, E>
             } else {
                 // 如果nn无效则用新的nn
                 nn = make_neighbors(arg, node, end, &mut self.finder);
+                let h = self.finder.nodes[node.0].h();
+                // println!("======= h2: {:?}, node: {:?}", h, node);
+                if h < near_h  {
+                    near = node;
+                    near_h = h;
+                }
                 continue;
             }
             // 用堆上的nn2和nn比较

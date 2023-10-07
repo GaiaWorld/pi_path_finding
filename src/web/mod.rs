@@ -189,7 +189,7 @@ impl AStar {
         );
         match result {
             AStarResult::Found => return Some(end.clone()),
-            AStarResult::NotFound => return None,
+            AStarResult::NotFound(index) => return Some(index.0),
             AStarResult::LimitNotFound(index) => return Some(index.0),
         };
     }

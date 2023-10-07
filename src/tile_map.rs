@@ -9,8 +9,8 @@
 use crate::{
     base::{Aabb, Angle, Point},
     bresenham::Bresenham,
-    finder::{NodeEntry, NodeIndex, ResultIterator},
-    normal::Map,
+    finder::{AStar, NodeEntry, NodeIndex, ResultIterator, AStarResult},
+    normal::{make_neighbors, Entry, Map},
 };
 use num_traits::Zero;
 use pi_null::Null;
@@ -1875,4 +1875,51 @@ mod test_tilemap {
             }
         });
     }
+}
+
+#[test]
+fn test10() {
+    //let mut rng = pcg_rand::Pcg32::seed_from_u64(1238);
+    let mut map = TileMap::new(11, 11, 100, 141);
+    map.set_range_flag(
+        &Aabb::new(
+            Point::new(0, 0),
+            Point::new(map.width as isize, map.height as isize),
+        ),
+        u8::MAX,
+    );
+
+    map.set_node_center_flag(NodeIndex(0 + 5 * 11), 0);
+    map.set_node_center_flag(NodeIndex(1 + 5 * 11), 0);
+    map.set_node_center_flag(NodeIndex(2 + 5 * 11), 0);
+    map.set_node_center_flag(NodeIndex(3 + 5 * 11), 0);
+    map.set_node_center_flag(NodeIndex(4 + 5 * 11), 0);
+    map.set_node_center_flag(NodeIndex(5 + 5 * 11), 0);
+
+    map.set_node_center_flag(NodeIndex(5 + 0 * 11), 0);
+    map.set_node_center_flag(NodeIndex(5 + 1 * 11), 0);
+    map.set_node_center_flag(NodeIndex(5 + 2 * 11), 0);
+    map.set_node_center_flag(NodeIndex(5 + 3 * 11), 0);
+    map.set_node_center_flag(NodeIndex(5 + 4 * 11), 0);
+
+    let mut astar: AStar<usize, Entry<usize>> = AStar::with_capacity(map.width * map.height, 100);
+
+    let start = NodeIndex(110);
+    let end = NodeIndex(15);
+    let mut map = FlagTileMap::new(&map, 1, 1);
+
+    let r: AStarResult = astar.find(start, end, 30000, &mut map, make_neighbors);
+    println!("r: {:?}", r);
+    let r = match r {
+        AStarResult::Found => end,
+        AStarResult::NotFound(i) => i,
+        AStarResult::LimitNotFound(i) => i,
+    };
+
+    let mut rr = vec![];
+
+    for r in PathFilterIter::new(astar.result_iter(r), map.map.width) {
+        rr.push(r);
+    }
+    println!("========= rr: {:?}", rr);
 }
